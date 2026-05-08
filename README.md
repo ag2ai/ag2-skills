@@ -242,10 +242,21 @@ Evaluate arithmetic expressions using a sandboxed Python script.
 
 ## Installation
 
-### Claude Code
+Install the whole collection with the [`skills`](https://skills.sh) CLI:
 
 ```bash
-# Clone, then copy each skill you want into ~/.claude/skills/
+npx skills add ag2ai/ag2-skills
+```
+
+To install a single skill, append `@<skill-name>`:
+
+```bash
+npx skills add ag2ai/ag2-skills@ag2-quickstart
+```
+
+### Manual install (Claude Code)
+
+```bash
 git clone https://github.com/ag2ai/ag2-skills.git
 cp -r ag2-skills/skills/ag2-overview ~/.claude/skills/
 cp -r ag2-skills/skills/ag2-quickstart ~/.claude/skills/
