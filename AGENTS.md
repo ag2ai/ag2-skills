@@ -24,7 +24,7 @@ skills/
 
 ### Naming Conventions
 
-- **Skill directory**: `kebab-case`, prefixed `ag2-` for AG2-feature skills (e.g. `ag2-quickstart`, `ag2-middleware`). Generic utilities (e.g. `calculator`) skip the prefix.
+- **Skill directory**: `kebab-case`, prefixed `ag2-` for AG2-feature skills (e.g. `ag2-quickstart`, `ag2-middleware`).
 - **`SKILL.md`**: Always uppercase, always this exact filename.
 - **Scripts**: `kebab-case` or `snake_case` — pick one per skill and stay consistent.
 - **Zip file**: Must match directory name exactly: `{skill-name}.zip`.

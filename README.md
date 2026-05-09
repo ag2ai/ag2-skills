@@ -232,14 +232,6 @@ Test AG2 agents and tools without hitting a real LLM provider.
 - Injecting `ToolCallEvent`s to simulate tool execution
 - Asserting success / error paths
 
-### calculator
-
-Evaluate arithmetic expressions using a sandboxed Python script.
-
-**Use when:**
-
-- The user asks for an arithmetic calculation (addition, subtraction, multiplication, division, exponentiation, modulo, or any combination)
-
 ## Installation
 
 Install the whole collection with the [`skills`](https://skills.sh) CLI:
