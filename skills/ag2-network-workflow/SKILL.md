@@ -139,10 +139,50 @@ class TransitionGraph:
 class Transition:
     when: TransitionCondition       # evaluated against the just-accepted envelope + state
     then: TransitionTarget          # if when() is True, this resolves the next speaker
-    priority: int = 0               # higher runs first; ties break by insertion order
+    priority: int = 0               # LOWER runs first; ties break by insertion order
 ```
 
 On every accepted substantive envelope (text or packet), the adapter walks the `transitions` list. The **first** matching condition's target resolves the next speaker. If none match, `default_target` is consulted. A `TerminateTarget` resolves with `next_speaker=None`, which makes the adapter return `AdapterResult(next_state=CLOSING, ...)` and the hub posts `EV_CHANNEL_CLOSED`.
+
+**`priority` sorts ascending — a *lower* number is checked first.** The adapter does `sorted(transitions, key=lambda t: t.priority)` then walks the result, so `priority=0` (the default) beats `priority=100`. If you want a rule consulted before the others, either put it at the top of the list (the sort is stable, so equal priorities keep list order) or give it a *negative* priority. A common mistake: writing `priority=100` on a `ContextEquals(...) → TerminateTarget(...)` rule expecting it to win — it gets pushed to the *end* and a `FromSpeaker(...)` fallback fires first instead, so the channel never terminates.
+
+## Gotcha — the kickoff `channel.send()` is the `initial_speaker`'s first turn
+
+When you do `agent.open(type="workflow", ...)` then `await channel.send(text)`, that first send is folded as `initial_speaker`'s turn — it's an envelope from that agent, and `expected_next_speaker` starts equal to `initial_speaker`, so `validate_send` accepts it and the graph immediately routes onward. **The `initial_speaker`'s `Agent.ask` never runs for that turn** — the text you sent *is* its contribution.
+
+So if your design wants the *first agent that should actually think* (the drafter, the researcher, the planner) to respond to the kickoff prompt, that agent must **not** be `initial_speaker` and must **not** be the one calling `channel.send()`. Make a thin "intake" / "requester" agent the `initial_speaker` and channel-opener, have *it* send the brief, and route `FromSpeaker(intake) → AgentTarget(drafter)`:
+
+```python
+# `requester` never runs Agent.ask — no transition routes back to it — so its
+# prompt is immaterial. It exists only to own the kickoff send.
+requester_agent = Agent("requester", prompt="(submits the brief)", config=config)
+requester = await req_hc.register(requester_agent, Passport(name="requester"), Resume(), attach_plugin=False)
+drafter   = await drf_hc.register(drafter_agent,   Passport(name="drafter"),   Resume(), attach_plugin=False)
+reviewer  = await rev_hc.register(reviewer_agent,  Passport(name="reviewer"),  Resume(), attach_plugin=False)
+
+graph = TransitionGraph(
+    initial_speaker=requester.agent_id,
+    transitions=[
+        Transition(when=ContextEquals("approved", value=True), then=TerminateTarget("approved")),
+        Transition(when=FromSpeaker(requester.agent_id), then=AgentTarget(drafter.agent_id)),   # brief → drafter
+        Transition(when=FromSpeaker(drafter.agent_id),   then=AgentTarget(reviewer.agent_id)),
+        Transition(when=FromSpeaker(reviewer.agent_id),  then=AgentTarget(drafter.agent_id)),   # revise loop
+    ],
+    default_target=TerminateTarget("max_revisions"),
+    max_turns=12,
+)
+
+channel = await requester.open(
+    type="workflow",
+    target=[drafter.agent_id, reviewer.agent_id],
+    knobs={"graph": graph.to_dict()},
+)
+await channel.send("Brief: …")   # consumed as `requester`'s turn → routes to `drafter`, who drafts
+```
+
+This is exactly the shape the `intake`-led feedback-loop example below uses, and why it has an `intake` agent rather than letting the drafter open the channel. The same applies to `TransitionGraph.sequence([a, b, c])`: `channel.send(...)` is `a`'s turn, so if `a` is supposed to *produce* the first artifact (not just relay a prompt), prepend a kickoff agent — `sequence([kickoff, a, b, c])` — or seed differently.
+
+(Symptom when you get this wrong: the second agent in the chain receives the bare kickoff prompt as if it were the first agent's output, "responds" to something that isn't there, and the pipeline produces nonsense — often hallucinating that an artifact exists.)
 
 ## Built-in targets
 
