@@ -41,17 +41,15 @@ Full per-provider table (install + env var + config class) lives in `ag2-quickst
 | Web frontend via the AG-UI protocol | `ag2-ag-ui` | `AGUIStream`, FastAPI mount, CopilotKit |
 | OpenTelemetry traces / metrics | `ag2-telemetry` | `TelemetryMiddleware`, GenAI semconv attributes, content capture |
 
-## Project conventions for any skill that writes code into the AG2 repo
+## Multi-agent networks
 
-These are repo-wide rules from `CLAUDE.md`. Apply them whenever generating code that lands in `autogen/beta/`:
+Whenever two or more agents need to interact, load **`ag2-network-quickstart`** first — the network is the standard multi-agent pattern in AG2 beta. It covers the `Hub` setup and the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form). After the quickstart, route to the right deep-dive:
 
-- Do **not** use `from __future__ import annotations`.
-- All top-level imports — no function-level imports unless explicitly allowed.
-- No nested functions in runtime execution paths (decorator factories are fine).
-- No side effects in `__init__` — apply them at runtime.
-- Internal filesystem paths use `pathlib.Path`; public signatures accept `str | os.PathLike[str]`.
-- Common reusable APIs come from the `autogen.beta` top-level (e.g. `from autogen.beta import Agent, tool, Context`); advanced/specialised APIs come from sub-modules (`autogen.beta.middleware`, `autogen.beta.config`, etc.).
+| User intent | Skill | What it covers |
+|---|---|---|
+| N-party round-robin / fixed turn order | `ag2-network-discussion` | `discussion` adapter, `ORDERING_ROUND_ROBIN` knob, `can_send` probe pattern, view-window sizing |
+| Declarative orchestration / `TransitionGraph` / GroupChat migration | `ag2-network-workflow` | `workflow` adapter, `TransitionGraph.sequence` / `.round_robin`, `Handoff`, `ToolCalled`, `ContextEquals`, `context_vars`, 8 cookbook patterns, classic-`GroupChat` migration |
+| Rate limits, access policy, expectations, audit, capability tracking | `ag2-network-governance` | `Rule` (`AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`), `Expectation`s, audit log + `AUDIT_KIND_*`, task observation, `Resume.observed` |
+| Custom envelope handlers, view policies, peer discovery, the six LLM-facing network tools | `ag2-network-tools-and-views` | `say` / `delegate` / `peers` / `channels` / `tasks` / `context` tools, `agent_client.on_envelope`, `ViewPolicy` (`FullTranscript` / `WindowedSummary`), `skill_md` peer discovery, full `Envelope` / `EV_*` reference |
 
-## Beta-doc cross-reference
-
-If a skill's recipe is incomplete for the case at hand, the source docs are at `website/docs/beta/`. Each sibling skill points to its primary `.mdx` files in its own "Going deeper" section.
+**Not a network task:** if the user has *one* agent recursively spawning its own sub-tasks (via `run_subtask` / `run_subtasks(parallel=True)`) or calling another agent as a lightweight tool, use **`ag2-subagent-delegation`** — no hub, no registry, no channels. The network is for *distinct, registered* agents collaborating through a shared hub.
