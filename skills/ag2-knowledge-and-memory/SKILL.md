@@ -58,6 +58,8 @@ agent = Agent(
 
 After each conversation the aggregate writes `/memory/working.md`. The next time you build an `Agent` against the same store, `WorkingMemoryPolicy` reads that file in and injects it as prompt context. The agent "remembers" without replaying chat history. Full runnable example: `assets/journal_companion.py`.
 
+> Heads-up: `knowledge=KnowledgeConfig(store=...)` also hands the LLM a `knowledge` tool, seeds `SKILL.md` files into the store (which tell the model to use that tool), and dumps each turn's events to `/log/` — fine for a journal companion that manages its own memory, but see *"`KnowledgeConfig(store=...)` does four things, not one"* under **Wiring it all on the Agent** below if you want the store available to policies **without** exposing it to the model.
+
 ## `KnowledgeStore` implementations
 
 | Implementation | Use when |
@@ -181,6 +183,36 @@ class KnowledgeConfig:
     bootstrap: StoreBootstrap | None = None    # e.g. DefaultBootstrap()
 ```
 
+### `KnowledgeConfig(store=...)` does four things, not one
+
+Passing `knowledge=KnowledgeConfig(store=...)` bundles four orthogonal concerns — there is currently **no granular opt-out**:
+
+1. **Registers the store** so assembly policies (`WorkingMemoryPolicy`, …) can `context.dependencies.get(KnowledgeStore)`. (Usually the only thing you wanted.)
+2. **Auto-injects a `knowledge` action-group tool** into the agent's tool list. The LLM can now `knowledge(action="write"/"read"/"list"/...)` against the store.
+3. **Seeds `SKILL.md` files into the store** on first `ask` — `/SKILL.md`, `/artifacts/SKILL.md`, `/memory/SKILL.md`, `/log/SKILL.md` — unless you override `bootstrap=`. The root one literally says *"Use the `knowledge` tool to manage it."*, so the seeded content actively prompt-engineers the LLM toward (2), even if you never wanted the tool.
+4. **Persists turn events to `/log/`** — after every turn, the agent's full event history is dumped to `/log/{stream_id}.jsonl` in the store. Always on when a store is configured; no flag (and persistence failures only `logger.exception`).
+
+The practical fallout: an agent whose job is "produce a report" will sometimes call `knowledge(action="write", path="/report", content=<the whole report>)` because the seeded `SKILL.md` told it to. If you only want the store available to assembly policies and **not** exposed to the LLM, skip `KnowledgeConfig` entirely and register the store as a plain dependency:
+
+```python
+from autogen.beta.knowledge import KnowledgeStore, DiskKnowledgeStore
+from autogen.beta.policies import WorkingMemoryPolicy
+
+store = DiskKnowledgeStore("./agent-state")
+
+agent = Agent(
+    "summarizer",
+    config=config,
+    dependencies={KnowledgeStore: store},   # ← store is reachable, but no tool / bootstrap / event-log
+    assembly=[WorkingMemoryPolicy()],        # reads /memory/working.md from context.dependencies
+)
+
+# Write working memory yourself — e.g. from a separate "reflector" pass after the pipeline:
+await store.write("/memory/working.md", reflection_text)
+```
+
+This trades away aggregation/compaction wiring (you drive `store.write(...)` yourself) for full control over what the LLM sees and can touch. If you *do* want `KnowledgeConfig` but not the seeded `SKILL.md` files, pass `bootstrap=` your own no-op `StoreBootstrap` (a class with `async def bootstrap(self, store, actor_name): pass`) — there's no built-in off switch. (A `KnowledgeConfig(expose_tool=False)` flag — or splitting store-registration from tool-exposure — is an open request, not current API.)
+
 Full shape:
 
 ```python
@@ -228,3 +260,7 @@ Lifecycle events emitted: `CompactionCompleted` (with `events_before` / `events_
 - **`read_range` operates on byte offsets, not character offsets** — multi-byte UTF-8 sequences need careful alignment.
 - **Forgetting that `WorkingMemoryAggregate` is destructive** — it overwrites `/memory/working.md` each fire. That's intentional (rolling state, not log) but expect prior content to merge or disappear.
 - **Expecting `AlertPolicy` to render alerts to the LLM without being in `assembly=`** — alerts sit on the stream as `ObserverAlert` events but only reach the LLM when `AlertPolicy` injects them.
+- **`KnowledgeConfig(store=...)` ≠ "just a storage handle"** — it also auto-injects a `knowledge` LLM tool, seeds `SKILL.md` files into the store (which tell the LLM to use that tool), and dumps every turn's events to `/log/`. If you only need the store for assembly policies, pass it via `Agent(..., dependencies={KnowledgeStore: store})` instead. See "`KnowledgeConfig(store=...)` does four things, not one" above.
+- **`WorkingMemoryAggregate`'s summarisation prompt is fixed and content-oriented** — it preserves *what the conversation was about* ("preserve important existing context. Remove outdated information."), not *strategy*. A research agent that wants memory to track tactics (which phrasings/domains worked) gets a file of stale topical facts instead. There's no `prompt=` override — write a custom `AggregateStrategy.aggregate(events, ctx, store)` with your own summarisation prompt (or write the file directly from a reflector pass).
+- **Aggregation/compaction failures are swallowed** — if a custom `AggregateStrategy` (or its trigger) raises, the middleware does `except Exception: logger.exception(...)`: no `AggregationFailed` event, no `AggregationCompleted` either, nothing on the stream. From the outside "trigger didn't fire" and "strategy raised" look identical. When debugging a custom strategy, attach a handler to the `autogen.beta` logger (`logging.getLogger("autogen.beta").addHandler(logging.StreamHandler())` / `setLevel(logging.DEBUG)`) — otherwise you're flying blind. (Only `AggregationCompleted` / `CompactionCompleted` events exist; there's no `*Started` / `*Failed`.)
+- **Store filesystem root vs in-store path nest** — `DiskKnowledgeStore("./memory")` roots the store at `./memory`, and the in-store working-memory path is `/memory/working.md`, so the file lands at `./memory/memory/working.md`. Name the FS root something distinct (`./agent-state`, `./journal-state`) to avoid the "memory inside memory" head-scratch.
