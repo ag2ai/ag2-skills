@@ -87,10 +87,9 @@ async def main() -> None:
     bob_hc = HubClient(link, hub=hub)
 
     # 3. Register each Agent. The hub stamps the agent_id and returns an AgentClient.
-    #    attach_plugin=False keeps the auto-injected `say` tool out of the
-    #    agent's surface — on adapter-managed channels (every type below),
-    #    a mid-turn `say` would race the default handler's round-end envelope.
-    #    See ag2-network-tools-and-views for the full reasoning.
+    #    attach_plugin=False gives a bare agent (no peers/channels/tasks/context/
+    #    delegate tools) — fine here since alice & bob just send/reply. The `say`
+    #    tool is offered per-turn by the adapter, not the plugin (see below).
     alice = await alice_hc.register(
         Agent("alice", prompt="Ask one focused question and stop.", config=config),
         Passport(name="alice"),
@@ -155,7 +154,20 @@ Every channel is governed by an adapter that defines participants, turn order, a
 - N-party round-robin → load **`ag2-network-discussion`**.
 - Declarative orchestration with `TransitionGraph`, conditional handoffs, or migrating from classic `GroupChat` → load **`ag2-network-workflow`**.
 
-**Register agents with `attach_plugin=False` on any of these adapters.** `HubClient.register(...)` auto-attaches `NetworkPlugin`, which gives the LLM a `say` tool. On every adapter above, the default handler already builds the round-end envelope from the LLM's reply body — if the LLM also calls `say` mid-turn, that emits a second substantive envelope, the adapter folds it, and the handler's round-end envelope then trips `channel is closed` or `expects <other> to speak`. Pass `attach_plugin=False` unless the agent specifically needs `delegate` / `peers` / `channels` / `tasks` / `context`. Full reasoning in `ag2-network-tools-and-views` → "Gotcha — `say` collides with adapter-managed channels".
+### Plugin tools vs. adapter tools — `attach_plugin` and `say`
+
+`HubClient.register(...)` attaches `NetworkPlugin` by default. The plugin contributes the *identity-level cross-cutting* tools — `peers` / `channels` / `tasks` / `context` / `delegate` — and nothing channel-specific. Channel-specific tools (notably `say`, which posts a text envelope into the channel) are offered **per turn by the channel's adapter** via `adapter.tools_for(...)`, regardless of `attach_plugin`:
+
+| Adapter | Offers `say`? |
+|---|---|
+| `consulting` | only to the participant whose turn it is in the 1Q1R |
+| `conversation` | always (no turn order) |
+| `discussion` | only to `expected_next_speaker` |
+| `workflow` | never — routing is your `@tool` handoff functions |
+
+So `attach_plugin=False` no longer means "no `say`" — it means "no `delegate` / `peers` / `channels` / `tasks` / `context`". Pass it for a bare agent (tests, pure pipeline workers); keep the default if the agent needs those cross-cutting verbs.
+
+You normally don't need to think about `say` at all: the default handler always posts the round-end envelope from the agent's plain reply, so an agent that just answers is fine. `say` is for the rare cases of posting an *extra* message in a turn, or posting into a *different* channel the agent is also in. (Edge case to avoid: an agent on a `consulting` channel that calls `say(...)` **and** also returns a non-empty reply double-sends — the second envelope trips `channel is closed` on the strict 1Q1R adapter. If you don't want the agent calling `say`, just don't prompt it to.) Full detail: `ag2-network-tools-and-views` → "Adapter-owned tools (`tools_for`)".
 
 ### `consulting` — strict 1Q1R
 
@@ -199,6 +211,26 @@ Default expectation is lenient: `max_silence(3600s, audit)` (logs to the audit k
 
 **Don't use `conversation` for:** strict 1Q1R (use `consulting`); multi-participant chats (use `discussion` or `workflow`).
 
+## A non-LLM participant — `HumanClient`
+
+Not every participant is an `Agent`. `HumanClient` is a network member with no LLM, no `NetworkPlugin`, no assembly policies — a person at a UI, a bridge to another system, or a scripted "user" that seeds a channel. Register it with `register_human` (not `register` — that path now *rejects* `kind="human"` and points you here):
+
+```python
+from autogen.beta.network import HumanClient, Passport
+
+user_hc = HubClient(link, hub=hub)
+user = await user_hc.register_human(Passport(name="user", kind="human"))   # resume=, rule=, auto_ack_invites= optional
+```
+
+It implements the same `NetworkClient` surface as `AgentClient` for *outbound* — `user.open(type=..., target=...)`, `user.send(channel_id, text, audience=...)`, `user.post_envelope(env)` (the escape hatch for adapter-shaped envelopes like a workflow `EV_PACKET`) — and gives you two ways to consume *inbound* envelopes:
+
+- **Push** — `user.on_envelope(callback)`; the coroutine fires once per inbound envelope. Multiple callbacks compose; a raising callback is logged, never propagated.
+- **Pull** — `await user.next_envelope(predicate=..., timeout=...)` blocks for the next match; `async for env in user.envelopes(): ...` streams everything until `user.disconnect()`.
+
+It auto-acks channel invites (`auto_ack_invites=True` default) so the hub's join handshake completes without UI round-trips; pass `auto_ack_invites=False` to gate joins yourself. Discover humans via `hub.list_agents(kind="human")`.
+
+Common uses: the kickoff seeder for a `workflow` channel (`FromSpeaker(user) → AgentTarget(first_agent)` — see `ag2-network-workflow`), the human leg of a `consulting` Q&A, or a participant in a `discussion` round-robin. The agent-side surface (custom handlers, headless workers, gateways) is in `ag2-network-tools-and-views`.
+
 ## Identity — `Passport` and `Resume`
 
 Three dataclasses describe an agent on the network. Tenant supplies most fields; the hub stamps the rest.
@@ -210,6 +242,7 @@ passport = Passport(
     name="alice",          # required, unique within the hub
     owner="acme",          # optional, tenant id for multi-tenant deployments
     model="claude-sonnet-4-6",  # optional, surfaces on peer-lookup results
+    kind="agent",          # optional: "agent" (default / None) | "human" | "remote_agent"
 )
 
 resume = Resume(
@@ -220,7 +253,7 @@ resume = Resume(
 )
 ```
 
-The hub stamps `Passport.agent_id` and `Passport.created_at` at registration. The `Resume.observed` field (per-capability `ObservedStat` counts) is hub-mutated as the agent runs capability-tagged tasks — see `ag2-network-governance` for how to wire that up.
+The hub stamps `Passport.agent_id` and `Passport.created_at` at registration. `Passport.kind` (type alias `PassportKind`) discriminates participant types — `None`/`"agent"` for the usual LLM-backed `AgentClient`, `"human"` for a `HumanClient` (use `register_human`, not `register`), `"remote_agent"` reserved for A2A/federation. `hub.list_agents(kind=...)` filters by it. The `Resume.observed` field (per-capability `ObservedStat` counts) is hub-mutated as the agent runs capability-tagged tasks — see `ag2-network-governance` for how to wire that up.
 
 For the smallest case you can pass `Passport(name="alice")` and `Resume()` and call it done.
 
@@ -338,8 +371,8 @@ Always pair `Hub.open(...)` with `hub.close()` (typically in `try/finally`). `hu
 |---|---|
 | N-party round-robin / fixed turn order | `ag2-network-discussion` |
 | Declarative orchestration / `TransitionGraph` / GroupChat migration | `ag2-network-workflow` |
-| Rate limits, access policy, expectations, audit, capability tracking | `ag2-network-governance` |
-| Network-assigned LLM tools (`say`, `delegate`, `peers`), custom handlers, views, peer discovery | `ag2-network-tools-and-views` |
+| Rate limits, access policy, expectations, audit, capability tracking, swappable arbiter / hub listeners | `ag2-network-governance` |
+| Adapter-owned tools (`say` / `tools_for`), plugin tools (`delegate` / `peers` / …), custom handlers, `HumanClient` internals, views, peer discovery | `ag2-network-tools-and-views` |
 
 ## Quick reference — imports
 
@@ -349,8 +382,11 @@ from autogen.beta.network import (
     Hub,
     HubClient,
     LocalLink,
+    # Participants
+    HumanClient,           # register via HubClient.register_human(...)
     # Identity
     Passport,
+    PassportKind,          # Literal["agent", "human", "remote_agent"] | None
     Resume,
     ResumeExample,
     # Envelopes + events

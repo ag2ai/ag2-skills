@@ -43,19 +43,21 @@ If the user is unsure, the rule of thumb: **need any condition more complex than
 
 The expectation is strict: a stuck speaker auto-closes the channel after 10 minutes. Tune via `ag2-network-governance`.
 
-## Register workflow agents with `attach_plugin=False`
+## Workflow agents and the `NetworkPlugin`
 
-`HubClient.register(...)` auto-attaches `NetworkPlugin`, which gives every agent a `say` tool. On a workflow channel an LLM that calls `say` mid-turn emits an `EV_TEXT` envelope — `WorkflowAdapter.fold` runs immediately, advances turn state (or closes the channel via `ContextEquals` / `ToolCalled` rules), and the default handler's subsequent round-end `EV_PACKET` then raises `channel is closed` or `expects <other> to speak`. The LLM picks `say` because the plugin's context policy advertises it as a network tool.
+`HubClient.register(...)` attaches `NetworkPlugin` by default. The plugin adds only the *identity-level cross-cutting* tools — `peers` / `channels` / `tasks` / `context` / `delegate`. Channel-specific tools (notably `say`, plus your workflow handoff `@tool`s) come from `adapter.tools_for(client, metadata, state, participant_id)`, resolved per turn by the default handler and merged into `agent.ask(tools=...)` — and **the `workflow` adapter offers none**: `WorkflowAdapter.tools_for(...)` returns `[]`. So a workflow agent never sees `say`; routing is entirely your `@tool`-decorated handoff functions (returning `Handoff`, mutating context vars, or calling `channel.close()`).
 
-For pure workflow agents — agents whose only tools are the domain tools you wrote — register with `attach_plugin=False`:
+Consequence: the old "mid-turn `say` races the round-end `EV_PACKET`" hazard **can't happen** on a workflow channel — you do **not** need `attach_plugin=False` for correctness. Choose by capability instead:
+
+- **Keep the plugin** (default) if the agent should also `delegate` to a peer, look up `peers` / `channels` / `tasks`, or read/write channel `context` from outside the graph. (`delegate` / `channels(action="open")` spin up *separate* channels — they never emit on the workflow channel, so they don't disturb its turn machinery.)
+- **`attach_plugin=False`** for a genuinely bare agent — only the domain `@tool`s you wrote. Tidy for pure pipeline workers and most tests.
 
 ```python
-worker = await wc.register(agent, Passport(...), Resume(), attach_plugin=False)
+# Bare pipeline worker — no cross-cutting network tools:
+worker = await wc.register(agent, Passport(name="worker"), Resume(), attach_plugin=False)
 ```
 
-The default handler still wraps the LLM's plain-text response into the workflow packet. You lose `delegate` / `peers` / `channels` / `tasks` / `context`; for a graph-driven pipeline that's the right trade.
-
-All examples in this skill assume this registration pattern. Full reasoning and the keep-the-plugin alternative are in `ag2-network-tools-and-views` → "Gotcha — `say` collides with adapter-managed channels".
+The default handler wraps the LLM's plain-text reply into the workflow `EV_PACKET` either way. The examples below pass `attach_plugin=False` because they're pure pipeline workers; drop it if your agents need `delegate` / `peers` / etc. Full detail: `ag2-network-tools-and-views` → "Adapter-owned tools (`tools_for`)".
 
 ## Smallest example — pipeline via `sequence`
 
@@ -142,7 +144,7 @@ class Transition:
     priority: int = 0               # LOWER runs first; ties break by insertion order
 ```
 
-On every accepted substantive envelope (text or packet), the adapter walks the `transitions` list. The **first** matching condition's target resolves the next speaker. If none match, `default_target` is consulted. A `TerminateTarget` resolves with `next_speaker=None`, which makes the adapter return `AdapterResult(next_state=CLOSING, ...)` and the hub posts `EV_CHANNEL_CLOSED`.
+On every accepted substantive envelope (text or packet), the adapter walks the `transitions` list. The **first** matching condition's target resolves the next speaker. If none match, `default_target` is consulted. A `TerminateTarget` resolves with `next_speaker=None`, which makes the adapter return `AdapterResult(next_state=CLOSING, ...)` and the hub posts `EV_CHANNEL_CLOSED` with that target's `reason`. `max_turns` is a separate, harder cap: once `turn_count` reaches it the adapter closes the channel immediately with reason **`"max_turns"`** — it does *not* fall through to `default_target` (so a `default_target=TerminateTarget("…")` reason only appears when an actual turn produced no matching transition).
 
 **`priority` sorts ascending — a *lower* number is checked first.** The adapter does `sorted(transitions, key=lambda t: t.priority)` then walks the result, so `priority=0` (the default) beats `priority=100`. If you want a rule consulted before the others, either put it at the top of the list (the sort is stable, so equal priorities keep list order) or give it a *negative* priority. A common mistake: writing `priority=100` on a `ContextEquals(...) → TerminateTarget(...)` rule expecting it to win — it gets pushed to the *end* and a `FromSpeaker(...)` fallback fires first instead, so the channel never terminates.
 
@@ -150,37 +152,36 @@ On every accepted substantive envelope (text or packet), the adapter walks the `
 
 When you do `agent.open(type="workflow", ...)` then `await channel.send(text)`, that first send is folded as `initial_speaker`'s turn — it's an envelope from that agent, and `expected_next_speaker` starts equal to `initial_speaker`, so `validate_send` accepts it and the graph immediately routes onward. **The `initial_speaker`'s `Agent.ask` never runs for that turn** — the text you sent *is* its contribution.
 
-So if your design wants the *first agent that should actually think* (the drafter, the researcher, the planner) to respond to the kickoff prompt, that agent must **not** be `initial_speaker` and must **not** be the one calling `channel.send()`. Make a thin "intake" / "requester" agent the `initial_speaker` and channel-opener, have *it* send the brief, and route `FromSpeaker(intake) → AgentTarget(drafter)`:
+So if your design wants the *first agent that should actually think* (the drafter, the researcher, the planner) to respond to the kickoff prompt, that agent must **not** be `initial_speaker` and must **not** be the one calling `channel.send()`. The clean answer is a **`HumanClient`** as the seeder — a non-LLM participant (no `Agent`, no plugin) whose only job is to open the channel and post the brief. Make it `initial_speaker` and route `FromSpeaker(user) → AgentTarget(drafter)`:
 
 ```python
-# `requester` never runs Agent.ask — no transition routes back to it — so its
-# prompt is immaterial. It exists only to own the kickoff send.
-requester_agent = Agent("requester", prompt="(submits the brief)", config=config)
-requester = await req_hc.register(requester_agent, Passport(name="requester"), Resume(), attach_plugin=False)
-drafter   = await drf_hc.register(drafter_agent,   Passport(name="drafter"),   Resume(), attach_plugin=False)
-reviewer  = await rev_hc.register(reviewer_agent,  Passport(name="reviewer"),  Resume(), attach_plugin=False)
+from autogen.beta.network import HumanClient, Passport  # plus the usual imports
+
+user_hc = HubClient(link, hub=hub)
+user = await user_hc.register_human(Passport(name="user", kind="human"))   # ← register_human, not register
+drafter  = await drf_hc.register(drafter_agent,  Passport(name="drafter"),  Resume(), attach_plugin=False)
+reviewer = await rev_hc.register(reviewer_agent, Passport(name="reviewer"), Resume(), attach_plugin=False)
 
 graph = TransitionGraph(
-    initial_speaker=requester.agent_id,
+    initial_speaker=user.agent_id,
     transitions=[
         Transition(when=ContextEquals("approved", value=True), then=TerminateTarget("approved")),
-        Transition(when=FromSpeaker(requester.agent_id), then=AgentTarget(drafter.agent_id)),   # brief → drafter
-        Transition(when=FromSpeaker(drafter.agent_id),   then=AgentTarget(reviewer.agent_id)),
-        Transition(when=FromSpeaker(reviewer.agent_id),  then=AgentTarget(drafter.agent_id)),   # revise loop
+        Transition(when=FromSpeaker(user.agent_id),     then=AgentTarget(drafter.agent_id)),    # brief → drafter
+        Transition(when=FromSpeaker(drafter.agent_id),  then=AgentTarget(reviewer.agent_id)),
+        Transition(when=FromSpeaker(reviewer.agent_id), then=AgentTarget(drafter.agent_id)),    # revise loop
     ],
     default_target=TerminateTarget("max_revisions"),
     max_turns=12,
 )
 
-channel = await requester.open(
-    type="workflow",
-    target=[drafter.agent_id, reviewer.agent_id],
-    knobs={"graph": graph.to_dict()},
-)
-await channel.send("Brief: …")   # consumed as `requester`'s turn → routes to `drafter`, who drafts
+channel = await user.open(type="workflow", target=[drafter.agent_id, reviewer.agent_id], knobs={"graph": graph.to_dict()})
+await channel.send("Brief: …")   # consumed as `user`'s turn → routes to `drafter`, who drafts
+# Later, when the channel closes: await user.next_envelope(predicate=lambda e: e.event_type == EV_CHANNEL_CLOSED, timeout=300)
 ```
 
-This is exactly the shape the `intake`-led feedback-loop example below uses, and why it has an `intake` agent rather than letting the drafter open the channel. The same applies to `TransitionGraph.sequence([a, b, c])`: `channel.send(...)` is `a`'s turn, so if `a` is supposed to *produce* the first artifact (not just relay a prompt), prepend a kickoff agent — `sequence([kickoff, a, b, c])` — or seed differently.
+`register_human(passport, *, resume=None, rule=None, auto_ack_invites=True)` returns a `HumanClient` (`HubClient.register(...)` now *rejects* `kind="human"` and points you here). It auto-acks invites so the quorum handshake completes without UI round-trips; pass `auto_ack_invites=False` to gate joins by hand. Drive it with `on_envelope(callback)` (push) or `next_envelope(...)` / `envelopes()` (pull) — see `ag2-network-quickstart` → "`HumanClient`".
+
+If you'd rather not introduce a `HumanClient`, the older workaround still works: a throwaway "intake" `Agent` as `initial_speaker` whose `Agent.ask` is never invoked (no transition routes back to it) — but a `HumanClient` is cheaper (no model config, no plugin) and is what the framework's own smoke tests use. Either way, the same applies to `TransitionGraph.sequence([a, b, c])`: `channel.send(...)` is `a`'s turn, so if `a` is supposed to *produce* the first artifact (not just relay a prompt), prepend a seeder — `sequence([user, a, b, c])`.
 
 (Symptom when you get this wrong: the second agent in the chain receives the bare kickoff prompt as if it were the first agent's output, "responds" to something that isn't there, and the pipeline produces nonsense — often hallucinating that an artifact exists.)
 
@@ -218,7 +219,7 @@ graph = TransitionGraph.round_robin(
 )
 ```
 
-`round_robin` uses `Always() → RoundRobinTarget()` with a `TerminateTarget("round_robin_complete")` default. `sequence` uses `FromSpeaker(steps[i]) → AgentTarget(steps[i+1])` chains with `TerminateTarget("sequence_complete")`.
+`round_robin` uses `Always() → RoundRobinTarget()` and a `TerminateTarget("round_robin_complete")` default — but since `Always()` matches every turn, the default is unreachable and the channel actually closes with reason `"max_turns"` once the cap is hit (set `max_turns` or it cycles forever). `sequence` uses `FromSpeaker(steps[i]) → AgentTarget(steps[i+1])` chains with a `TerminateTarget("sequence_complete")` default — *that* one is reachable: after the last step speaks, no `FromSpeaker` rule matches, so the default fires and you get `"sequence_complete"`.
 
 ## Conditional handoff (the most common manual graph)
 
@@ -387,7 +388,7 @@ async def approve(reason: str, channel: ChannelInject) -> str:
     return f"approved: {reason}"
 ```
 
-The reviewer's `approve` call writes `done=True`; the reviewer's reply text lands on the same packet fold; `ContextEquals("done", True)` matches and the channel terminates with `"approved"`. Without `approve`, the drafter/reviewer alternation continues until `max_turns` fires `"max_iterations"`.
+The reviewer's `approve` call writes `done=True`; the reviewer's reply text lands on the same packet fold; `ContextEquals("done", True)` matches and the channel terminates with `"approved"`. Without `approve`, the drafter/reviewer alternation continues until `turn_count` hits `max_turns` and the channel closes with reason `"max_turns"`. (The `default_target=TerminateTarget("max_iterations")` above only fires if some turn produced *no* matching transition — here one of the `FromSpeaker` rules always matches, so in this graph it's effectively dead; keep it as a sane fallback for graphs where it can be reached.)
 
 ## The eight cookbook patterns
 
@@ -567,6 +568,8 @@ from autogen.beta.network import (
     ChannelStateInject,
     # Channel types
     WORKFLOW_TYPE,
+    # Seeding a workflow (kickoff participant)
+    HumanClient,  # via HubClient.register_human(Passport(name=..., kind="human"))
 )
 from autogen.beta.network.workflow_helpers import set_context, delete_context
 ```

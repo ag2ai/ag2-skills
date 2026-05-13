@@ -38,17 +38,20 @@ license: Apache-2.0
 
 The view recent-window is sized to `N*2` so each agent's projection covers roughly the last two full cycles — enough context for a coherent reply without ballooning the prompt as the discussion grows.
 
-## Register discussion agents with `attach_plugin=False`
+## Discussion agents, the `NetworkPlugin`, and `say`
 
-`HubClient.register(...)` auto-attaches `NetworkPlugin`, which gives every agent a `say` tool. On a discussion channel an LLM that calls `say` emits an extra `EV_TEXT` envelope mid-turn — the `DiscussionAdapter` advances `expected_next_speaker` immediately, and the default handler's *own* round-end `EV_TEXT` then fails `validate_send` with `expects <other> to speak`. Register the participants with `attach_plugin=False` so the LLM's plain-text reply is the only thing that goes out:
+`HubClient.register(...)` attaches `NetworkPlugin` by default — that adds `peers` / `channels` / `tasks` / `context` / `delegate`, the identity-level verbs. The `say` tool is *not* a plugin tool; it's offered per turn by the `DiscussionAdapter` itself (`tools_for(...)`), and only to `expected_next_speaker` — so a participant only sees `say` on the turn it's allowed to speak.
+
+You normally don't need `say`: the default handler already posts the round-end `EV_TEXT(reply.body)` from the agent's plain reply, which *is* that turn's contribution. The hazard is an agent that calls `say(content="…")` **and then** also returns a non-empty body — two `EV_TEXT`s in one turn; the `DiscussionAdapter` folds the first, advances `expected_next_speaker`, and the round-end one fails `validate_send` (`expects <other> to speak`). `attach_plugin=False` does **not** suppress `say` (it's adapter-owned), so it isn't the fix here; use it only if you want a bare agent without the five plugin verbs.
+
+Prompting alone isn't always enough: capable models will call `say` unprompted just because it's present in the per-turn tool surface. If you see the double-send in practice, swap the notify handler for one that calls `agent.ask(...)` **without** `tools=` (so the adapter-injected `say` isn't offered to the LLM) — see `ag2-network-tools-and-views` → "Bypassing adapter tools".
 
 ```python
-alice = await alice_hc.register(
-    alice_agent, Passport(name="alice"), Resume(), attach_plugin=False,
-)
+# Bare discussion participant (no plugin verbs) — still gets `say` from the adapter on its turn:
+alice = await alice_hc.register(alice_agent, Passport(name="alice"), Resume(), attach_plugin=False)
 ```
 
-All examples below assume this. Full reasoning and the keep-the-plugin alternative are in `ag2-network-tools-and-views` → "Gotcha — `say` collides with adapter-managed channels".
+The examples below pass `attach_plugin=False` for compactness; drop it if your participants need `delegate` / `peers` / etc. Full detail: `ag2-network-tools-and-views` → "Adapter-owned tools (`tools_for`)".
 
 ## Smallest example
 
@@ -130,19 +133,24 @@ When alice sends her first envelope, the hub fans `EV_TEXT` out to bob and carol
 
 When bob's reply lands, the same fan-out repeats. Now `expected_next_speaker = carol`, so carol's handler engages and bob's skips. No wasted LLM calls anywhere.
 
-If you write a **custom handler** for a discussion channel, mirror this pattern:
+If you write a **custom handler** for a discussion channel, mirror this pattern — and **delegate non-text envelopes to `default_handler`** so you keep the auto-ack of `EV_CHANNEL_INVITE` (otherwise the channel sits in `INVITED` until `invite_ack_timeout` and the hub closes it on you):
 
 ```python
-from autogen.beta.network import Envelope, EV_TEXT
+from autogen.beta.network import Envelope, EV_TEXT, default_handler
 
 
 async def my_handler(envelope: Envelope) -> None:
     if envelope.event_type != EV_TEXT:
+        await default_handler(envelope, client)   # invite-ack + lifecycle bookkeeping
         return
-    if not await hc.can_send(envelope.channel_id, my_agent_id):
+    if not hc.can_send(envelope.channel_id, my_agent_id):    # sync — not awaitable
         return  # not our turn — skip the LLM call
     # ... read WAL, project view, run Agent.ask, send reply ...
 ```
+
+### A `HumanClient` in the round-robin
+
+A discussion participant doesn't have to be an `Agent`. Register a `HumanClient` (`hc.register_human(Passport(name="user", kind="human"))` — see `ag2-network-quickstart` → "`HumanClient`") and add it to the participant order like any other. It has no notify handler that auto-responds, so the application drives its turn: subscribe with `on_envelope(...)` (or pull with `next_envelope(...)`) and, when an envelope lands, check `hc.can_send(channel_id, user.agent_id)` (sync, not awaitable) — if it's the human's turn, prompt the person and `await user.send(channel_id, text)`; otherwise wait. (The framework's own discussion tests do exactly this — a human gating on adapter state for its slot in the rotation.)
 
 ## State object
 
@@ -246,6 +254,7 @@ from autogen.beta.network import (
     ORDERING_ROUND_ROBIN,      # = "round_robin"
     DiscussionAdapter,         # the adapter class itself (rarely instantiated directly)
     DiscussionState,           # state dataclass
+    HumanClient,               # a non-LLM participant in the rotation — HubClient.register_human(...)
 )
 ```
 

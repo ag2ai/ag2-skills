@@ -1,6 +1,6 @@
 ---
 name: ag2-network-governance
-description: Govern an AG2 multi-agent network — identity (`Passport`, `Resume` with `claimed_capabilities` and hub-mutated `observed` track record), per-agent `Rule` with `AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`, `AuthAdapter` / `AuthRegistry` registration, channel-level `Expectation`s (`acks_within`, `reply_within`, `max_silence`, `turn_within`) with `audit` / `warn` / `auto_close` violation handlers, the hub's append-only audit log and `AUDIT_KIND_*` constants, and task observation via `agent.task(..., capability=...)` + `TaskMirror` that auto-updates `Resume.observed` for peer ranking. Use when the user needs rate limits, access policy, SLAs, compliance trails, capability-driven peer ranking, or to inspect what actually happened on the network. Load this after `ag2-network-quickstart`. For the agent-side surface (custom handlers, views, LLM tools) see `ag2-network-tools-and-views`.
+description: Govern an AG2 multi-agent network — identity (`Passport`, `Resume` with `claimed_capabilities` and hub-mutated `observed` track record), per-agent `Rule` with `AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`, the swappable `HubArbiter` / `RuleBasedArbiter` access-&-routing seam (`Allow` / `Deny`, `register_arbiter`), `AuthAdapter` / `AuthRegistry` registration, channel-level `Expectation`s (`acks_within`, `reply_within`, `max_silence`, `turn_within`) with `audit` / `warn` / `auto_close` violation handlers, the hub's append-only audit log and `AUDIT_KIND_*` constants, live `HubListener` / `BaseHubListener` observability (`on_envelope_posted` / `on_turn_failed` / `on_inbox_pressure` / …) plus `Hub` `on_*` hooks and `register_sweeper`, and task observation via `agent.task(..., capability=...)` + `TaskMirror` that auto-updates `Resume.observed` for peer ranking. Use when the user needs rate limits, access policy, SLAs, compliance trails, live metrics/alerting, capability-driven peer ranking, or to inspect what actually happened on the network. Load this after `ag2-network-quickstart`. For the agent-side surface (custom handlers, views, LLM tools, `HumanClient`) see `ag2-network-tools-and-views`.
 license: Apache-2.0
 ---
 
@@ -16,11 +16,13 @@ Load this skill when the user needs to:
 
 - Limit who can talk to whom (`AccessBlock`)
 - Rate-limit envelopes (`RateBlock`)
-- Cap inbox size to prevent flooding (`InboxBlock`)
+- Cap inbox size to prevent flooding (`InboxBlock`) — and get an early-warning signal before the cap (`on_inbox_pressure` / `high_water`)
 - Set channel TTL defaults or delegation depth (`LimitsBlock`)
+- Plug in custom access / routing logic — JWT scopes, per-tenant quotas, federation (`HubArbiter` / `RuleBasedArbiter`)
 - Authenticate agents at registration (`AuthAdapter`)
 - Tune the channel-close timing (`acks_within`, `reply_within`, `max_silence`, `turn_within`)
-- Read or query the audit log for compliance
+- Read or query the audit log for compliance — or stream live state changes to metrics / alerting (`HubListener`)
+- Add a custom periodic task to the hub (`register_sweeper`)
 - Build a capability track record on each agent (`Resume.observed`)
 - Route based on which agents have demonstrably done a task (e.g. "send to whichever researcher has the lowest `p50_latency_ms`")
 
@@ -69,17 +71,16 @@ from autogen.beta.network import (
 rule = Rule(
     access=AccessBlock(
         outbound_to=["bob", "carol"],           # whitelist of recipients (names or ids)
-        channel_types_allowed=["consulting", "discussion"],
+        channel_types=ChannelTypeAccess(
+            initiate=["consulting", "discussion"],
+            accept=["consulting", "discussion"],
+        ),
     ),
-    limits=LimitsBlock(
+    limits=LimitsBlock(                         # rate + inbox nest INSIDE limits
         channel_ttl_default="4h",               # default TTL for channels this agent creates
         delegation_depth=2,                     # max recursion through sub-task delegation
-    ),
-    rate=RateBlock(
-        envelopes_per_minute=60,
-    ),
-    inbox=InboxBlock(
-        max_pending=100,                        # cap inbound queue depth
+        rate=RateBlock(per_minute=60, burst=10),
+        inbox=InboxBlock(max_pending=100),      # cap inbound queue depth
     ),
 )
 
@@ -98,7 +99,7 @@ alice = await alice_hc.register(
 | `RateBlock` | Outbound envelopes/minute | Throttled at send time |
 | `InboxBlock` | Inbound queue depth | `InboxFull` to the sender |
 
-When a rule check fails the hub raises the matching error from `channel.send(...)` or `hc.register(...)`; the envelope never lands on the WAL. The denial is also recorded in the audit log (kind `AUDIT_KIND_RULE_SET` on rule changes; the actual deny event flows through the standard audit path).
+When a rule check fails the hub raises the matching error from `channel.send(...)` or `hc.register(...)`; the envelope never lands on the WAL. The denial is also recorded in the audit log (kind `AUDIT_KIND_RULE_SET` on rule changes; the actual deny event flows through the standard audit path). The component that *runs* those checks — and the seam where you'd plug in something other than rule data — is the **arbiter**, below.
 
 ### Updating a rule after registration
 
@@ -120,6 +121,42 @@ parse_duration("2d")   # 172800.0
 ```
 
 `s`, `m`, `h`, `d` suffixes; whitespace tolerated.
+
+## The arbiter — swappable access & routing
+
+The hub doesn't enforce `Rule`s with inline `if` checks anymore; it delegates every access / routing decision to a **`HubArbiter`** — a Protocol with one method per decision point, each returning `Allow()` or `Deny(reason, error=<NetworkError subclass>)`:
+
+| Method | Consulted before… | Default `Deny` error |
+|---|---|---|
+| `authorize_register(passport, resume, rule)` | committing a registration | `AccessDeniedError` |
+| `authorize_channel_open(creator, metadata)` | creating a channel | `AccessDeniedError` |
+| `authorize_send(envelope, sender, sender_rule, recipients)` | appending an envelope to the WAL (outbound access + delegation depth) | `AccessDeniedError` |
+| `authorize_inbox(envelope, recipient, recipient_rule, current_pending)` | enqueuing into a recipient's inbox (capacity) | `InboxFull` |
+| `authorize_dispatch(envelope, sender, recipient, recipient_rule)` | dispatching one delivery | `AccessDeniedError` |
+| `resolve_unknown_audience(envelope, unknown_ids)` | dispatching to ids the hub doesn't know — returns `None` (drop silently — the single-hub default) or a replacement id list (federation hook) | — |
+
+The default is **`RuleBasedArbiter`** — it enforces the per-agent `Rule` (`access` + `limits` + `inbox` + `rate`) exactly as the hub did inline before this seam existed. If you only use `Rule`, you never touch the arbiter.
+
+Swap it to layer your own logic — JWT scopes, per-tenant quotas, federation routing — on top of (or instead of) the rule data. `BaseHubArbiter` returns `Allow()` for everything, so a subclass that overrides one gate would *allow* the rest — to keep rule enforcement, delegate to a `RuleBasedArbiter()` instance:
+
+```python
+from autogen.beta.network import HubArbiter, BaseHubArbiter, RuleBasedArbiter, Allow, Deny
+
+class ScopedArbiter(BaseHubArbiter):
+    def __init__(self, inner: HubArbiter) -> None:
+        self._inner = inner                           # the rule checks
+    async def authorize_send(self, envelope, sender, sender_rule, recipients):
+        if not _token_has_scope(sender, "net.send"):
+            return Deny("missing net.send scope")     # → AccessDeniedError back to the caller
+        return await self._inner.authorize_send(envelope, sender, sender_rule, recipients)
+    # authorize_register / _channel_open / _inbox / _dispatch / resolve_unknown_audience
+    # all fall through to BaseHubArbiter's Allow() — explicitly re-delegate any you want enforced.
+
+hub.register_arbiter(ScopedArbiter(RuleBasedArbiter()))   # one active arbiter; replaces the prior one
+# hub.arbiter  → the active instance (read-only; handy in tests)
+```
+
+`Deny.error` picks the `NetworkError` subclass the hub raises (default `AccessDeniedError`) — `Deny(..., error=InboxFull)` etc. to control it. The arbiter is the **gatekeeper** (consulted *before* the state change); `HubListener` (later) is the **observer** (notified *after*). It's a different concern from `AuthAdapter` below — that authenticates *credentials* once at registration; the arbiter authorizes *actions* throughout the channel's life.
 
 ## Authentication
 
@@ -302,6 +339,45 @@ acme_agents = [r for r in await hub._audit_log.read_all()
 
 The audit log is **durable when backed by `DiskKnowledgeStore`**; with `MemoryKnowledgeStore` it lives only as long as the hub.
 
+## Hub listeners — live programmatic observability
+
+The audit log is the *durable* record. For *live* reactions to hub state changes — push to a metrics backend, stream to a dashboard, alert an on-call — register a **`HubListener`**: a read-only Protocol the hub fans out to after every state transition has committed. (The built-in audit log is itself one of these listeners.)
+
+| Method | Fires when |
+|---|---|
+| `on_envelope_posted(envelope)` | an envelope was accepted and written to the WAL |
+| `on_envelope_rejected(envelope, reason)` | the arbiter / validation denied a send |
+| `on_dispatch_failed(envelope, recipient_id, error)` | delivery to one recipient raised |
+| `on_channel_event(channel_id, kind, payload)` | created / opened / closed / expired / state change |
+| `on_agent_event(agent_id, kind, payload)` | registered / unregistered / resume / skill / rule set |
+| `on_expectation_fired(channel_id, expectation, detail)` | an expectation evaluator's threshold elapsed |
+| `on_turn_failed(agent_id, channel_id, error)` | an agent's notify-handler turn raised (the default handler routes failures here) |
+| `on_task_event(task_id, kind, payload)` | a `ag2.task.*` lifecycle event was observed |
+| `on_inbox_pressure(agent_id, pending, cap)` | a recipient's inbox first crosses `LimitsBlock.inbox.high_water` (fires once per crossing, not per envelope) |
+
+All methods are `async`; the hub awaits them sequentially in registration order, each wrapped in `try/except` — a buggy listener can't stall dispatch. Keep them fast (queue I/O onto your own task). Subclass `BaseHubListener` (every method is a `pass`) and override only what you need:
+
+```python
+from autogen.beta.network import BaseHubListener
+
+class MetricsListener(BaseHubListener):
+    async def on_envelope_posted(self, envelope):
+        statsd.incr(f"net.envelope.{envelope.event_type}")
+    async def on_inbox_pressure(self, agent_id, pending, cap):
+        statsd.gauge(f"net.inbox.{agent_id}", pending / cap)
+    async def on_turn_failed(self, agent_id, channel_id, error):
+        sentry.capture_exception(error)
+
+hub.register_listener(MetricsListener())     # hub.unregister_listener(inst) to detach
+```
+
+Two related hub-subclass seams:
+
+- **`on_*` hooks on `Hub` itself** — the same method set exists as empty methods on `Hub`; a `Hub` subclass can override them directly (the fan-out invokes the bound method alongside registered listeners). Use a subclass when the observability *is* the hub variant you're shipping; use `register_listener` for pluggable add-ons.
+- **`hub.register_sweeper(name, interval_seconds, fn)` / `unregister_sweeper(name)`** — adds your own periodic coroutine to the hub's interval-sweeper machinery (alongside the built-in TTL and expectation sweepers). Subclass-registered sweepers start immediately if `Hub.start()` has already run, otherwise queue until it does.
+
+`on_inbox_pressure` is governed by `LimitsBlock.inbox.high_water` — an absolute pending-count threshold (`int | None`). `None` (the default) auto-resolves to `int(inbox.max_pending * 0.8)`; `0` disables the signal. It's the early-warning sibling of the hard `InboxFull` (which is `InboxBlock.max_pending` itself, enforced by the arbiter).
+
 ## Task observation — building the track record
 
 Capability-tagged tasks update an agent's `Resume.observed[capability]` automatically. This is how the network knows that "bob has completed 47 research tasks at a 4.2s median latency."
@@ -416,10 +492,12 @@ After a few channels, `worker.resume.observed` holds both `"research"` and `"sum
 | `await hub.get_channel(channel_id)` | `ChannelMetadata` snapshot (state, participants, close_reason) |
 | `await hub.get_resume(agent_id)` | Current `Resume` (including `observed`) |
 | `await hub.get_passport(agent_id)` | Current `Passport` |
+| `await hub.list_agents(kind=None)` | Registered passports; `kind="agent"` / `"human"` / `"remote_agent"` filters by `Passport.kind` |
 | `await hub.read_wal(channel_id)` | Ordered list of `Envelope`s in that channel |
 | `await hub._audit_log.read_all()` | Every audit record |
+| `hub.arbiter` | The active `HubArbiter` (read-only) |
 
-The hub stamps `Resume.last_updated` on every mutation, so you can detect stale views by comparing timestamps.
+The hub stamps `Resume.last_updated` on every mutation, so you can detect stale views by comparing timestamps. For *push* (vs. these *pull* calls), register a `HubListener`.
 
 ## Quick reference — imports
 
@@ -430,6 +508,10 @@ from autogen.beta.network import (
     # Rules
     Rule, AccessBlock, LimitsBlock, RateBlock, InboxBlock,
     ChannelTypeAccess, parse_duration,
+    # Arbiter (swappable access / routing seam)
+    HubArbiter, BaseHubArbiter, RuleBasedArbiter, Allow, Deny,
+    # Listeners (live observability)  — hub.register_listener(...)
+    HubListener, BaseHubListener,
     # Auth
     AuthAdapter, AuthRegistry, AuthBlock, AuthError, NoAuth,
     # Expectations
