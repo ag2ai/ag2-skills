@@ -4,6 +4,37 @@ A collection of skills for [AG2](https://github.com/ag2ai/ag2) — an async, pro
 
 Skills follow the [Agent Skills](https://agentskills.io/) format.
 
+## Installation
+
+Install the whole collection with the [`skills`](https://skills.sh) CLI:
+
+```bash
+npx skills add ag2ai/ag2-skills
+```
+
+To install a single skill, append `@<skill-name>`:
+
+```bash
+npx skills add ag2ai/ag2-skills@ag2-quickstart
+```
+
+### Manual install (Claude Code)
+
+```bash
+git clone https://github.com/ag2ai/ag2-skills.git
+cp -r ag2-skills/skills/ag2-overview ~/.claude/skills/
+cp -r ag2-skills/skills/ag2-quickstart ~/.claude/skills/
+# ...repeat for the skills you need
+```
+
+### claude.ai
+
+Upload the corresponding `.zip` from `skills/` in the project's Skills settings, or paste the contents of `SKILL.md` into the conversation.
+
+### AG2 agents (programmatic)
+
+AG2's built-in `Skills` toolkit can load a local skills directory — see the `ag2-use-builtin-tools` skill for the wiring.
+
 ## Available Skills
 
 ### ag2-overview
@@ -130,6 +161,8 @@ Persist agent state across runs, shape what the LLM sees per turn, and cap histo
 - Aggregation — `WorkingMemoryAggregate`, `ConversationSummaryAggregate`
 - Assembly policies — `WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy`
 - Compaction — `TailWindowCompact`, `SummarizeCompact`
+- Opt-outs — `KnowledgeConfig(expose_tool=False, write_event_log=False)`, `DefaultBootstrap(mention_tool=False)`
+- Lifecycle events on the stream — `AggregationStarted` / `AggregationFailed` / `CompactionStarted` / `CompactionFailed` / `EventLogFailed`
 
 ### ag2-middleware
 
@@ -195,9 +228,11 @@ Build a multi-agent AG2 network — the standard pattern whenever two or more ag
 
 - The mental model — `Hub`, `HubClient`, `AgentClient`, `Envelope`, `Channel`, `LocalLink`
 - `Hub.open(MemoryKnowledgeStore())` and the channel lifecycle (INVITED → ACTIVE → CLOSING → CLOSED)
-- `Passport` / `Resume` identity basics
+- `Passport` / `Resume` identity basics; `Passport.kind` (`"agent"` / `"human"` / `"remote_agent"`)
+- `HumanClient` / `register_human` — non-LLM participants (user-in-the-loop, queue gateway, UI bridge)
 - The two 2-party channel adapters — `consulting` (strict 1Q1R, auto-closes) and `conversation` (free-form, app-controlled halt)
 - `agent_client.open(...)`, `channel.send(...)`, `wait_for_channel_event`, `hub.read_wal(...)`
+- Plugin tools (`NetworkPlugin`: `delegate` / `peers` / `channels` / `tasks` / `context`) vs adapter-owned tools (e.g. `say`); when to register with `attach_plugin=False`
 - The five channel-close routes (app `close()`, agent tool, adapter sentinel, workflow `TerminateTarget`, TTL/expectations)
 - Routing table to the other 4 network skills
 
@@ -216,6 +251,8 @@ Open an AG2 network `discussion` channel — N-party round-robin with fixed turn
 - `agent_client.open(type="discussion", target=[...], knobs={"ordering": ORDERING_ROUND_ROBIN})`
 - `expected_next_speaker` rotation
 - The `hc.can_send(...)` probe pattern (handlers skip LLM when it isn't their turn)
+- Putting a `HumanClient` in the rotation — non-LLM moderator taking their turn between agents
+- Custom handler escape — bypassing the adapter-owned `say` tool when an agent's domain tools shouldn't be hijacked mid-turn
 - `DiscussionState`, view-window sizing for N participants
 - `turn_within` expectation defaults (`warn` at 120s / `hide` at 600s)
 - Four close patterns for `discussion`
@@ -244,6 +281,9 @@ Build a declarative AG2 network `workflow` channel using `TransitionGraph` — t
 - The packet execution model and idempotent-tool requirement
 - All eight cookbook patterns (pipeline, hierarchical, star, escalation, redundant, feedback loop, context-aware routing, triage)
 - Side-by-side migration from classic `GroupChat`
+- Kickoff gotcha — seeding the brief from a `HumanClient` so the first agent drafts from it instead of consuming it as their turn
+- `channel.close()`-from-a-tool termination when the graph can't infer "done" from speaker / `ContextEquals` alone
+- Exact close-reason semantics — `max_turns` closes with reason `"max_turns"` (not `default_target`'s reason)
 
 ### ag2-network-governance
 
@@ -252,15 +292,19 @@ Govern an AG2 multi-agent network — identity, rules, expectations, audit, and 
 **Use when:**
 
 - Rate limits, access policy, inbox caps, channel TTLs
+- Custom access policy layered on top of `Rule` (e.g. gate on `claimed_capabilities`)
 - Authenticate agents at registration
 - Set or tune channel-close timing (`acks_within`, `reply_within`, `max_silence`, `turn_within`)
+- Live observability on the hub — log rejected sends, alert on inbox pressure, watch turn failures
 - Query the audit log for compliance
 - Build a capability track record on each agent for peer ranking
 
 **Topics covered:**
 
 - `Passport` / `Resume` (claimed capabilities + hub-mutated `observed`)
-- `Rule` with `AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`
+- `Rule` with `AccessBlock` / `LimitsBlock` (which nests `RateBlock` and `InboxBlock`)
+- `HubArbiter` / `BaseHubArbiter` / `RuleBasedArbiter` / `register_arbiter` — swappable access & routing decisions (`Allow` / `Deny`); layer your own logic on top of the rule data
+- `HubListener` / `BaseHubListener` / `register_listener` — live observability hooks (`on_envelope_posted`, `on_envelope_rejected`, `on_turn_failed`, `on_inbox_pressure`, …)
 - `AuthAdapter` / `AuthRegistry` registration
 - Channel-level `Expectation`s with `audit` / `warn` / `auto_close` handlers
 - The hub's append-only audit log and `AUDIT_KIND_*` constants
@@ -274,16 +318,19 @@ Shape what an AG2 network agent perceives and which actions its LLM can take.
 **Use when:**
 
 - Limit / extend the LLM's network tool surface
-- Write a custom envelope handler (gateways, headless workers)
+- Build a non-LLM participant (gateway, queue forwarder, UI bridge) in a network
+- Write a custom envelope handler
 - Customise what each agent sees of the channel (view policy)
 - Wire peer discovery via skill markdown
 - Send custom event types
 
 **Topics covered:**
 
-- The six auto-injected LLM tools — `say`, `delegate`, `peers`, `channels`, `tasks`, `context`
-- Replacing the default handler via `agent_client.on_envelope(callback)`
+- The auto-injected LLM tools — plugin tools (`NetworkPlugin`: `delegate` / `peers` / `channels` / `tasks` / `context`) vs adapter-owned tools (`say`, via `adapter.tools_for`); `attach_plugin=False` to drop plugin tools without losing `say`
+- `HumanClient` / `register_human` — non-LLM participants; push (`on_envelope`) and pull (`next_envelope`) surface; `auto_ack_invites`
+- Replacing the default handler via `agent_client.on_envelope(callback)` — what you lose when you do, and how to delegate non-`EV_TEXT` envelopes back to `default_handler` for invite-ack + lifecycle bookkeeping
 - The default handler's public hooks — `read_wal_until`, `resolve_view_policy`, `stamp_dependencies`
+- Bypassing adapter tools — running `agent.ask(...)` directly when you need full control of the round-trip
 - `ViewPolicy` protocol; built-in `FullTranscript` and `WindowedSummary(recent_n=N)`; writing custom views
 - Skill markdown (`skill_md=`, `parse_skill_frontmatter`, `hub.set_skill`, `render_fallback_skill`)
 - Full `Envelope` reference — `EV_*` event taxonomy, `audience`, `Priority`, `causation_id`, `visible_to`
@@ -345,37 +392,6 @@ Test AG2 agents and tools without hitting a real LLM provider.
 - Mocking LLM responses
 - Injecting `ToolCallEvent`s to simulate tool execution
 - Asserting success / error paths
-
-## Installation
-
-Install the whole collection with the [`skills`](https://skills.sh) CLI:
-
-```bash
-npx skills add ag2ai/ag2-skills
-```
-
-To install a single skill, append `@<skill-name>`:
-
-```bash
-npx skills add ag2ai/ag2-skills@ag2-quickstart
-```
-
-### Manual install (Claude Code)
-
-```bash
-git clone https://github.com/ag2ai/ag2-skills.git
-cp -r ag2-skills/skills/ag2-overview ~/.claude/skills/
-cp -r ag2-skills/skills/ag2-quickstart ~/.claude/skills/
-# ...repeat for the skills you need
-```
-
-### claude.ai
-
-Upload the corresponding `.zip` from `skills/` in the project's Skills settings, or paste the contents of `SKILL.md` into the conversation.
-
-### AG2 agents (programmatic)
-
-AG2's built-in `Skills` toolkit can load a local skills directory — see the `ag2-use-builtin-tools` skill for the wiring.
 
 ## Skill Structure
 
