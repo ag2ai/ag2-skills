@@ -162,18 +162,132 @@ Monitor an AG2 agent's stream — log events, detect repeated tool calls, track 
 
 ### ag2-subagent-delegation
 
-Delegate work from one AG2 `Agent` to another.
+Single-agent recursion and parallel fan-out within one AG2 `Agent`.
 
 **Use when:**
 
-- A coordinator should spawn sub-tasks, fan out concurrent work, or hand off to a specialist agent
+- One coordinator wants to break work into its own sub-tasks
+- Fanning out concurrent sub-tasks from a single agent
+- Calling a specialist agent as a lightweight tool (no hub, no registry)
 
 **Topics covered:**
 
 - Auto-injected `run_subtask` / `run_subtasks(parallel=True)` (opt in via `tasks=TaskConfig(...)`)
-- `Agent.as_tool()` for named delegates between distinct agents
+- `Agent.as_tool()` for invoking named delegates from inside another agent
 - Context flow, recursion safety
 - `persistent_stream` for sub-task history
+
+> For **two or more agents actually collaborating** through a shared hub with registry, durable channels, governance, and turn-taking, use the **`ag2-network-*`** skills below instead.
+
+### ag2-network-quickstart
+
+Build a multi-agent AG2 network — the standard pattern whenever two or more agents need to interact. **Load this first** for any multi-agent task.
+
+**Use when:**
+
+- "Have two agents talk to each other"
+- "Set up a multi-agent system / agent network"
+- "Agents that can call each other"
+- "Replace the classic `GroupChat` / `ConversableAgent.handoffs`"
+- Adding a registry, audit trail, or shared inbox for agents
+
+**Topics covered:**
+
+- The mental model — `Hub`, `HubClient`, `AgentClient`, `Envelope`, `Channel`, `LocalLink`
+- `Hub.open(MemoryKnowledgeStore())` and the channel lifecycle (INVITED → ACTIVE → CLOSING → CLOSED)
+- `Passport` / `Resume` identity basics
+- The two 2-party channel adapters — `consulting` (strict 1Q1R, auto-closes) and `conversation` (free-form, app-controlled halt)
+- `agent_client.open(...)`, `channel.send(...)`, `wait_for_channel_event`, `hub.read_wal(...)`
+- The five channel-close routes (app `close()`, agent tool, adapter sentinel, workflow `TerminateTarget`, TTL/expectations)
+- Routing table to the other 4 network skills
+
+### ag2-network-discussion
+
+Open an AG2 network `discussion` channel — N-party round-robin with fixed turn order.
+
+**Use when:**
+
+- "Three agents debating in turn"
+- "Panel discussion / brainstorm with a fixed cast"
+- "Round-robin reviewers commenting on a draft"
+
+**Topics covered:**
+
+- `agent_client.open(type="discussion", target=[...], knobs={"ordering": ORDERING_ROUND_ROBIN})`
+- `expected_next_speaker` rotation
+- The `hc.can_send(...)` probe pattern (handlers skip LLM when it isn't their turn)
+- `DiscussionState`, view-window sizing for N participants
+- `turn_within` expectation defaults (`warn` at 120s / `hide` at 600s)
+- Four close patterns for `discussion`
+
+### ag2-network-workflow
+
+Build a declarative AG2 network `workflow` channel using `TransitionGraph` — the modern replacement for classic `GroupChat + Agent.handoffs`.
+
+**Use when:**
+
+- Conditional handoffs between agents
+- Multi-step pipelines (researcher → writer → editor)
+- Triage agent routes to specialists
+- Drafter / reviewer feedback loop
+- Migrating from classic `GroupChat` / `ReplyResult(target=...)`
+
+**Topics covered:**
+
+- `TransitionGraph` with `initial_speaker`, `transitions`, `default_target`, `max_turns`
+- Convenience factories — `TransitionGraph.sequence([...])` and `.round_robin([...])`
+- Built-in targets — `AgentTarget`, `RoundRobinTarget`, `StayTarget`, `RevertToInitiatorTarget`, `TerminateTarget`
+- Built-in conditions — `Always`, `FromSpeaker`, `ToolCalled`, `ContextEquals`
+- Typed `Handoff` return for dynamic routing
+- Channel-scoped context variables (`EV_CONTEXT_SET`, `set_context`, `ChannelStateInject`)
+- `register_target` / `register_condition` for custom serializable subclasses
+- The packet execution model and idempotent-tool requirement
+- All eight cookbook patterns (pipeline, hierarchical, star, escalation, redundant, feedback loop, context-aware routing, triage)
+- Side-by-side migration from classic `GroupChat`
+
+### ag2-network-governance
+
+Govern an AG2 multi-agent network — identity, rules, expectations, audit, and task observation.
+
+**Use when:**
+
+- Rate limits, access policy, inbox caps, channel TTLs
+- Authenticate agents at registration
+- Set or tune channel-close timing (`acks_within`, `reply_within`, `max_silence`, `turn_within`)
+- Query the audit log for compliance
+- Build a capability track record on each agent for peer ranking
+
+**Topics covered:**
+
+- `Passport` / `Resume` (claimed capabilities + hub-mutated `observed`)
+- `Rule` with `AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`
+- `AuthAdapter` / `AuthRegistry` registration
+- Channel-level `Expectation`s with `audit` / `warn` / `auto_close` handlers
+- The hub's append-only audit log and `AUDIT_KIND_*` constants
+- Task observation via `agent.task(..., capability=...)` and `TaskMirror`
+- `ObservedStat` and reading the track record
+
+### ag2-network-tools-and-views
+
+Shape what an AG2 network agent perceives and which actions its LLM can take.
+
+**Use when:**
+
+- Limit / extend the LLM's network tool surface
+- Write a custom envelope handler (gateways, headless workers)
+- Customise what each agent sees of the channel (view policy)
+- Wire peer discovery via skill markdown
+- Send custom event types
+
+**Topics covered:**
+
+- The six auto-injected LLM tools — `say`, `delegate`, `peers`, `channels`, `tasks`, `context`
+- Replacing the default handler via `agent_client.on_envelope(callback)`
+- The default handler's public hooks — `read_wal_until`, `resolve_view_policy`, `stamp_dependencies`
+- `ViewPolicy` protocol; built-in `FullTranscript` and `WindowedSummary(recent_n=N)`; writing custom views
+- Skill markdown (`skill_md=`, `parse_skill_frontmatter`, `hub.set_skill`, `render_fallback_skill`)
+- Full `Envelope` reference — `EV_*` event taxonomy, `audience`, `Priority`, `causation_id`, `visible_to`
+- Sending raw envelopes with custom event types
 
 ### ag2-hitl
 

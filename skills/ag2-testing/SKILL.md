@@ -24,7 +24,7 @@ async def test_mocked_response():
     assert reply.body == "This is a mocked response."
 ```
 
-`TestConfig(*responses)` replaces the model client. Each positional arg is the mocked response for the next sequential turn — strings for text replies, `ToolCallEvent` for tool dispatches.
+`TestConfig(*responses)` replaces the model client. Each positional arg is the mocked response for the next LLM call *within an `ask()`* — strings for text replies, `ToolCallEvent` for tool dispatches. (The cursor is per-`ask()`; see "Multi-turn mock" below for what that means across multiple turns.)
 
 ## Simulate a successful tool call
 
@@ -123,9 +123,14 @@ await agent.ask("Test", stream=stream)
 assert collected[0].name == "expected_tool"
 ```
 
-### Multi-turn mock
+### Multi-turn mock — the response list is per-`ask()`, not per-conversation
 
-Each positional arg in `TestConfig(...)` corresponds to one model response. For a multi-turn test, supply enough responses for each turn the test exercises.
+`TestConfig(...)`'s response list is consumed **within a single `ask()`**, across that round's repeated LLM calls — that's why `TestConfig(ToolCallEvent("my_tool"), "final result")` works for a tool-using turn (the LLM emits the tool call, the tool runs, the LLM is called again and gets `"final result"`). Internally, `TestConfig.create()` hands back a fresh client whose iterator starts at `responses[0]`, and that's done once **per `ask()`** — so every new `ask()` (a `reply.ask(...)` chain, or each turn the network adapters / an auto-replying agent drive) **restarts the cursor at the first response**. Listing more responses does *not* let you say "conversational turn 2 differs from turn 1".
+
+For variation across multiple `ask()` calls, either:
+
+- pass a fresh `TestConfig(...)` per turn via the per-`ask()` `config=` override (`await agent.ask("…", config=TestConfig("turn-2 reply"))`), or
+- mock the model with a `ToolCallEvent` and put the per-turn logic in a **stateful tool** — a closure or class instance that tracks how many times it's been called and returns accordingly. (Useful when something *other than your test code* drives the turn loop — e.g. a `workflow` / `discussion` channel — so you can't inject a per-turn `config=`.)
 
 ## Going deeper
 
@@ -136,7 +141,7 @@ Each positional arg in `TestConfig(...)` corresponds to one model response. For 
 ## Common pitfalls
 
 - **Forgetting `@pytest.mark.asyncio`** — the test will skip or fail oddly.
-- **Mismatched response count** — `TestConfig` runs out of responses if the agent makes more LLM calls than you expect (e.g. tool error → another LLM call). Add more positional args or assert that the call sequence is what you intended.
+- **Mismatched response count** — `TestConfig` runs out of responses if the agent makes more LLM calls than you expect *within one `ask()`* (e.g. tool error → another LLM call); `StopIteration` propagates. Add more positional args or assert the call sequence. (The cursor is per-`ask()`, so the count you need is "LLM calls in one round", not "turns in the conversation" — see *Multi-turn mock* above.)
 - **Mocking the LLM but not the tool** — your tool function still runs (and may hit real APIs / disk). Mock the *tool* if you're isolating LLM behaviour, or override its `Depends` to inject test doubles.
 - **Asserting on `reply.body` when you set a `response_schema`** — `body` is the raw text. Use `await reply.content()` for the validated value.
 - **Sharing `Agent` instances across async tests** — agents carry mutable state (variables, dependencies). Construct fresh agents per test for isolation.

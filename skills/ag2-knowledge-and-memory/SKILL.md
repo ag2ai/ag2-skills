@@ -1,6 +1,6 @@
 ---
 name: ag2-knowledge-and-memory
-description: Persist agent state across runs, shape what the LLM sees per turn, and cap history to fit a context window. Covers `KnowledgeStore` (memory / sqlite / disk / redis), `KnowledgeConfig` (`store=`, `compact=`, `aggregate=`, `bootstrap=`), aggregation strategies (`WorkingMemoryAggregate`, `ConversationSummaryAggregate`), assembly policies (`WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy`), and compaction (`TailWindowCompact`, `SummarizeCompact`). Use when the user wants the agent to remember between conversations, manage long histories, or control prompt assembly.
+description: Persist agent state across runs, shape what the LLM sees per turn, and cap history to fit a context window. Covers `KnowledgeStore` (memory / sqlite / disk / redis), `KnowledgeConfig` (`store=`, `expose_tool=`, `write_event_log=`, `compact=`, `aggregate=`, `bootstrap=`) and its opt-out flags, aggregation strategies (`WorkingMemoryAggregate` with `prompt=` override, `ConversationSummaryAggregate`), assembly policies (`WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy`), compaction (`TailWindowCompact`, `SummarizeCompact`), and the lifecycle events (`AggregationStarted/Failed`, `CompactionStarted/Failed`, `EventLogFailed`). Use when the user wants the agent to remember between conversations, manage long histories, or control prompt assembly.
 license: Apache-2.0
 ---
 
@@ -58,7 +58,7 @@ agent = Agent(
 
 After each conversation the aggregate writes `/memory/working.md`. The next time you build an `Agent` against the same store, `WorkingMemoryPolicy` reads that file in and injects it as prompt context. The agent "remembers" without replaying chat history. Full runnable example: `assets/journal_companion.py`.
 
-> Heads-up: `knowledge=KnowledgeConfig(store=...)` also hands the LLM a `knowledge` tool, seeds `SKILL.md` files into the store (which tell the model to use that tool), and dumps each turn's events to `/log/` — fine for a journal companion that manages its own memory, but see *"`KnowledgeConfig(store=...)` does four things, not one"* under **Wiring it all on the Agent** below if you want the store available to policies **without** exposing it to the model.
+> Heads-up: `knowledge=KnowledgeConfig(store=...)` also hands the LLM a `knowledge` tool, seeds `SKILL.md` files into the store (which tell the model to use that tool), and dumps each turn's events to `/log/`. Fine for a journal companion that manages its own memory — but if you want the store available to policies **without** exposing it to the model, pass `expose_tool=False, write_event_log=False`. See *"`KnowledgeConfig(store=...)` does four things — and three of them are now opt-out"* under **Wiring it all on the Agent**.
 
 ## `KnowledgeStore` implementations
 
@@ -144,7 +144,7 @@ assembly=[
 
 | Strategy | Writes | Pairs with |
 |---|---|---|
-| `WorkingMemoryAggregate(config=...)` | `/memory/working.md` (single rolling file) | `WorkingMemoryPolicy` |
+| `WorkingMemoryAggregate(config=..., prompt="…")` | `/memory/working.md` (single rolling file) — `prompt=` overrides the merge template (`{existing}` / `{events}` placeholders) | `WorkingMemoryPolicy` |
 | `ConversationSummaryAggregate(config=...)` | `/memory/conversations/{ts}_{stream_id}.md` | `EpisodicMemoryPolicy` |
 
 `AggregateTrigger` controls cadence — `every_n_turns`, `every_n_events`, `on_end`. `AggregateTrigger()` alone fires nothing; opt in to at least one. `on_end=True` defaults off because each fire is an LLM call.
@@ -176,42 +176,41 @@ from dataclasses import dataclass
 @dataclass
 class KnowledgeConfig:
     store: KnowledgeStore
+    expose_tool: bool = True               # auto-inject the `knowledge` LLM tool?
+    write_event_log: bool = True           # dump each turn's events to /log/{stream_id}.jsonl?
     compact: CompactStrategy | None = None
     compact_trigger: CompactTrigger | None = None
     aggregate: AggregateStrategy | None = None
     aggregate_trigger: AggregateTrigger | None = None
-    bootstrap: StoreBootstrap | None = None    # e.g. DefaultBootstrap()
+    bootstrap: StoreBootstrap | None = None    # default: DefaultBootstrap(mention_tool=expose_tool)
 ```
 
-### `KnowledgeConfig(store=...)` does four things, not one
+### `KnowledgeConfig(store=...)` does four things — and three of them are now opt-out
 
-Passing `knowledge=KnowledgeConfig(store=...)` bundles four orthogonal concerns — there is currently **no granular opt-out**:
+Passing `knowledge=KnowledgeConfig(store=...)` bundles four concerns. Defaults preserve the original behaviour, but **`expose_tool` and `write_event_log` flags now turn most of it off**:
 
-1. **Registers the store** so assembly policies (`WorkingMemoryPolicy`, …) can `context.dependencies.get(KnowledgeStore)`. (Usually the only thing you wanted.)
-2. **Auto-injects a `knowledge` action-group tool** into the agent's tool list. The LLM can now `knowledge(action="write"/"read"/"list"/...)` against the store.
-3. **Seeds `SKILL.md` files into the store** on first `ask` — `/SKILL.md`, `/artifacts/SKILL.md`, `/memory/SKILL.md`, `/log/SKILL.md` — unless you override `bootstrap=`. The root one literally says *"Use the `knowledge` tool to manage it."*, so the seeded content actively prompt-engineers the LLM toward (2), even if you never wanted the tool.
-4. **Persists turn events to `/log/`** — after every turn, the agent's full event history is dumped to `/log/{stream_id}.jsonl` in the store. Always on when a store is configured; no flag (and persistence failures only `logger.exception`).
+1. **Registers the store** so assembly policies (`WorkingMemoryPolicy`, …) can `context.dependencies.get(KnowledgeStore)`. (Usually the only thing you wanted — and the one piece with no flag, because it's the point.)
+2. **Auto-injects a `knowledge` action-group tool** into the agent's tool list (`knowledge(action="write"/"read"/"list"/...)`). Disable with `expose_tool=False`.
+3. **Seeds `SKILL.md` files into the store** on first `ask` — `/SKILL.md`, `/artifacts/SKILL.md`, `/memory/SKILL.md`, `/log/SKILL.md` — unless you pass an explicit `bootstrap=`. The default is `DefaultBootstrap(mention_tool=expose_tool)`, so when you set `expose_tool=False` the seeded `SKILL.md` automatically stops telling the LLM to "use the `knowledge` tool" (it can't — there is no tool). For *no* seeding at all, pass `bootstrap=` your own no-op `StoreBootstrap` (a class with `async def bootstrap(self, store, actor_name): pass`); there's still no built-in `NoBootstrap`.
+4. **Persists turn events to `/log/`** — after every turn, the agent's full event history is dumped to `/log/{stream_id}.jsonl`. Disable with `write_event_log=False`. Persistence failures emit an `EventLogFailed` event on the stream (and also `logger.exception`).
 
-The practical fallout: an agent whose job is "produce a report" will sometimes call `knowledge(action="write", path="/report", content=<the whole report>)` because the seeded `SKILL.md` told it to. If you only want the store available to assembly policies and **not** exposed to the LLM, skip `KnowledgeConfig` entirely and register the store as a plain dependency:
+So "store visible to policies, invisible to the LLM, no `/log/` clutter, no `SKILL.md` files" is:
 
 ```python
-from autogen.beta.knowledge import KnowledgeStore, DiskKnowledgeStore
-from autogen.beta.policies import WorkingMemoryPolicy
-
-store = DiskKnowledgeStore("./agent-state")
-
 agent = Agent(
     "summarizer",
     config=config,
-    dependencies={KnowledgeStore: store},   # ← store is reachable, but no tool / bootstrap / event-log
-    assembly=[WorkingMemoryPolicy()],        # reads /memory/working.md from context.dependencies
+    knowledge=KnowledgeConfig(
+        store=DiskKnowledgeStore("./agent-state"),
+        expose_tool=False, write_event_log=False,   # no `knowledge` tool, no /log/ dump
+        aggregate=WorkingMemoryAggregate(config=cheap_config),  # aggregation/compaction wiring still works
+        aggregate_trigger=AggregateTrigger(on_end=True),
+    ),
+    assembly=[WorkingMemoryPolicy()],   # reads /memory/working.md from context.dependencies
 )
-
-# Write working memory yourself — e.g. from a separate "reflector" pass after the pipeline:
-await store.write("/memory/working.md", reflection_text)
 ```
 
-This trades away aggregation/compaction wiring (you drive `store.write(...)` yourself) for full control over what the LLM sees and can touch. If you *do* want `KnowledgeConfig` but not the seeded `SKILL.md` files, pass `bootstrap=` your own no-op `StoreBootstrap` (a class with `async def bootstrap(self, store, actor_name): pass`) — there's no built-in off switch. (A `KnowledgeConfig(expose_tool=False)` flag — or splitting store-registration from tool-exposure — is an open request, not current API.)
+If you also want zero `SKILL.md` seeding, add `bootstrap=NoBootstrap()` where `NoBootstrap` is your own no-op `StoreBootstrap`. The older alternative — skip `KnowledgeConfig` entirely and register the store as a plain `Agent(..., dependencies={KnowledgeStore: store})` — still works and is the absolute minimum (no tool, no bootstrap, no `/log/`, *and* no aggregate/compact wiring); use it when you want to drive `store.write("/memory/working.md", ...)` yourself from, say, a separate "reflector" pass.
 
 Full shape:
 
@@ -225,7 +224,8 @@ agent = Agent(
         compact_trigger=CompactTrigger(max_events=200),
         aggregate=ConversationSummaryAggregate(config=summarizer_config),
         aggregate_trigger=AggregateTrigger(every_n_turns=10, on_end=True),
-        bootstrap=DefaultBootstrap(),  # seeds /SKILL.md, /artifacts/, /log/, /memory/
+        # expose_tool / write_event_log default True; bootstrap defaults to
+        # DefaultBootstrap(mention_tool=expose_tool). Set explicitly only to opt out.
     ),
     assembly=[
         WorkingMemoryPolicy(),
@@ -238,7 +238,14 @@ agent = Agent(
 
 The harness wires internal middleware conditionally — `_AssemblerMiddleware`, `_HaltCheckMiddleware`, `_CompactionMiddleware`, `_AggregationMiddleware`. You only pay for what you turn on.
 
-Lifecycle events emitted: `CompactionCompleted` (with `events_before` / `events_after` / `usage`), `AggregationCompleted` (with `strategy` / `usage`), `HaltEvent` (when `AlertPolicy` sees a FATAL alert). Subscribe via `ag2-observers-and-alerts`.
+Lifecycle events emitted on the agent's stream:
+
+- `CompactionStarted` → `CompactionCompleted` (`events_before` / `events_after` / `usage`) or `CompactionFailed` (the exception)
+- `AggregationStarted` → `AggregationCompleted` (`strategy` / `usage`) or `AggregationFailed` (the exception)
+- `EventLogFailed` if persisting the `/log/` event stream raised
+- `HaltEvent` when `AlertPolicy` sees a FATAL alert
+
+The `*Failed` ones are the durable, observable signal — the harness also `logger.exception`s them, but you don't need to configure Python logging to see something went wrong: subscribe to the stream (see `ag2-observers-and-alerts`).
 
 ## Going deeper
 
@@ -260,7 +267,7 @@ Lifecycle events emitted: `CompactionCompleted` (with `events_before` / `events_
 - **`read_range` operates on byte offsets, not character offsets** — multi-byte UTF-8 sequences need careful alignment.
 - **Forgetting that `WorkingMemoryAggregate` is destructive** — it overwrites `/memory/working.md` each fire. That's intentional (rolling state, not log) but expect prior content to merge or disappear.
 - **Expecting `AlertPolicy` to render alerts to the LLM without being in `assembly=`** — alerts sit on the stream as `ObserverAlert` events but only reach the LLM when `AlertPolicy` injects them.
-- **`KnowledgeConfig(store=...)` ≠ "just a storage handle"** — it also auto-injects a `knowledge` LLM tool, seeds `SKILL.md` files into the store (which tell the LLM to use that tool), and dumps every turn's events to `/log/`. If you only need the store for assembly policies, pass it via `Agent(..., dependencies={KnowledgeStore: store})` instead. See "`KnowledgeConfig(store=...)` does four things, not one" above.
-- **`WorkingMemoryAggregate`'s summarisation prompt is fixed and content-oriented** — it preserves *what the conversation was about* ("preserve important existing context. Remove outdated information."), not *strategy*. A research agent that wants memory to track tactics (which phrasings/domains worked) gets a file of stale topical facts instead. There's no `prompt=` override — write a custom `AggregateStrategy.aggregate(events, ctx, store)` with your own summarisation prompt (or write the file directly from a reflector pass).
-- **Aggregation/compaction failures are swallowed** — if a custom `AggregateStrategy` (or its trigger) raises, the middleware does `except Exception: logger.exception(...)`: no `AggregationFailed` event, no `AggregationCompleted` either, nothing on the stream. From the outside "trigger didn't fire" and "strategy raised" look identical. When debugging a custom strategy, attach a handler to the `autogen.beta` logger (`logging.getLogger("autogen.beta").addHandler(logging.StreamHandler())` / `setLevel(logging.DEBUG)`) — otherwise you're flying blind. (Only `AggregationCompleted` / `CompactionCompleted` events exist; there's no `*Started` / `*Failed`.)
+- **`KnowledgeConfig(store=...)` ≠ "just a storage handle"** — it also auto-injects a `knowledge` LLM tool, seeds `SKILL.md` files into the store, and dumps every turn's events to `/log/`. Turn those off with `KnowledgeConfig(store=..., expose_tool=False, write_event_log=False)` (the default bootstrap then also stops mentioning the tool, since `mention_tool` defaults to `expose_tool`); or skip `KnowledgeConfig` and use `Agent(..., dependencies={KnowledgeStore: store})` for the bare minimum. See "`KnowledgeConfig(store=...)` does four things — and three of them are now opt-out" above.
+- **`WorkingMemoryAggregate`'s default prompt is content-oriented** — out of the box it preserves *what the conversation was about* ("preserve important existing context, remove outdated information"), not *strategy*; a research agent that wants memory to track tactics (which phrasings/domains worked) gets stale topical facts instead. Pass `WorkingMemoryAggregate(config=..., prompt="…")` to override it — the template gets `{existing}` (current working memory) and `{events}` (the new conversation) interpolated. For something more radical than "different prompt, same shape", write a custom `AggregateStrategy.aggregate(events, ctx, store)` (or write the file directly from a reflector pass).
+- **Watch for `*Failed` events when debugging custom strategies** — if a custom `AggregateStrategy`/`CompactStrategy` (or its trigger) raises, the harness `logger.exception`s it *and* emits `AggregationFailed` / `CompactionFailed` (with the exception) on the stream — and `EventLogFailed` if the `/log/` write blows up. So "trigger didn't fire" vs. "strategy raised" is distinguishable without configuring Python logging — just subscribe (`ag2-observers-and-alerts`). You also get `AggregationStarted` / `CompactionStarted` to confirm the trigger *did* fire.
 - **Store filesystem root vs in-store path nest** — `DiskKnowledgeStore("./memory")` roots the store at `./memory`, and the in-store working-memory path is `/memory/working.md`, so the file lands at `./memory/memory/working.md`. Name the FS root something distinct (`./agent-state`, `./journal-state`) to avoid the "memory inside memory" head-scratch.
