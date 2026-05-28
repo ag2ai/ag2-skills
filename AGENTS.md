@@ -53,6 +53,22 @@ license: Apache-2.0
 {Link to any files in `references/` or upstream AG2 docs (`website/docs/beta/...`).}
 ```
 
+### Frontmatter limits (per the [Agent Skills spec](https://agentskills.io/specification))
+
+These are hard limits, checked by `skills-ref validate ./skills/{skill-name}`. Stay within them:
+
+| Field | Limit | Rules |
+|---|---|---|
+| `name` | **≤ 64 characters** | Lowercase `a–z`, `0–9`, and hyphens only; no leading/trailing hyphen; no consecutive `--`; **must equal the directory name**. |
+| `description` | **≤ 1024 characters** | Non-empty; say *what* it does and *when* to use it, with trigger keywords. Must be **valid YAML**: if the text contains a colon-then-space (`: `), wrap the whole value in quotes — otherwise the frontmatter fails to parse. |
+| `compatibility` | ≤ 500 characters | Optional; only for real environment requirements. |
+| `license`, `metadata`, `allowed-tools` | — | Optional (see spec). |
+
+### Body sizing (chars / tokens)
+
+- `name` + `description` are the **only** bytes loaded at startup (the discovery budget, ~100 tokens) — keep them tight but keyword-rich.
+- The full `SKILL.md` body loads on activation. The spec recommends keeping it **under ~5000 tokens** and **under 500 lines**. Aim well under that — **target < 5000 characters** for a focused skill — and push depth into `references/` (loaded only on demand).
+
 ### Best Practices for Context Efficiency
 
 Skills are loaded on-demand — only the skill `name` and `description` from the frontmatter are loaded at startup. The full `SKILL.md` loads into context only when the agent decides the skill is relevant. To minimise context usage:
