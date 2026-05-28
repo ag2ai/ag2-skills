@@ -1,6 +1,6 @@
 ---
 name: ag2-middleware
-description: Intercept the AG2 beta agent loop with `BaseMiddleware` — wrap full turns (`on_turn`), each LLM call (`on_llm_call`), each tool execution (`on_tool_execution`), or each human-input request (`on_human_input`). Use for retry, logging, history trimming, request mutation, tool auditing, guardrails, or rate limiting. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware` (see `ag2-telemetry`). For per-tool hooks see also `ag2-add-custom-tool` tool-middleware section.
+description: "Intercept the AG2 beta agent loop with `BaseMiddleware` \u2014 wrap full turns (`on_turn`), each LLM call (`on_llm_call`), each tool execution (`on_tool_execution`), or each human-input request (`on_human_input`). Use for retry, logging, history trimming, request mutation, tool auditing, guardrails, or rate limiting. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware` (see `ag2-telemetry`). For per-tool hooks see also `ag2-add-custom-tool` tool-middleware section."
 license: Apache-2.0
 ---
 
