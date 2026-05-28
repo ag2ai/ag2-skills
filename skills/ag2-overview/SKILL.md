@@ -1,6 +1,6 @@
 ---
 name: ag2-overview
-description: Map of AG2 beta capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 beta (autogen.beta) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, telemetry, or testing.
+description: Map of AG2 beta capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 beta (autogen.beta) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, telemetry, testing, or evaluation.
 license: Apache-2.0
 ---
 
@@ -35,6 +35,8 @@ Full per-provider table (install + env var + config class) lives in `ag2-quickst
 | Pause for human input or gate a tool with approval | `ag2-hitl` | `context.input()`, `hitl_hook`, `approval_required()` middleware |
 | Logging, retry, history-trim, custom interception | `ag2-middleware` | `BaseMiddleware`, `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, tool middleware |
 | Test agents and tools | `ag2-testing` | `TestConfig`, mocking LLM responses, simulating `ToolCallEvent` |
+| Evaluate / benchmark an agent offline, CI gate, scorers | `ag2-evaluation` | `Suite`, `run_agent`, `final_answer_matches` / `tool_called` / `agent_judge`, `@scorer`, `RunResult`, `TestConfig`, `evaluate_traces`, `diff().regressions` |
+| Compare models / prompts — leaderboard or head-to-head | `ag2-eval-comparison` | `run_variants` (`Variants.from_*`), `run_pairwise` + `pairwise_judge` (win-rate, Wilson CI, flips, κ), `human_pairwise` |
 | Persistent memory across runs, history compaction, assembly | `ag2-knowledge-and-memory` | `KnowledgeStore`, `KnowledgeConfig`, `WorkingMemoryAggregate`, `AssemblyPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `TailWindowCompact`, `SummarizeCompact` |
 | Observability, alerts, halts | `ag2-observers-and-alerts` | `BaseObserver`, `TokenMonitor`, `LoopDetector`, `EventWatch`, `CadenceWatch`, `AlertPolicy`, `HaltEvent` |
 | Send images / audio / video / PDFs in | `ag2-multimodal-input` | `ImageInput`, `AudioInput`, `VideoInput`, `DocumentInput`, `FilesAPI` |

@@ -393,6 +393,45 @@ Test AG2 agents and tools without hitting a real LLM provider.
 - Injecting `ToolCallEvent`s to simulate tool execution
 - Asserting success / error paths
 
+### ag2-evaluation
+
+Evaluate, test, and track an AG2 agent offline — run a suite, grade the answers, gate it in CI, and diff runs over time.
+
+**Use when:**
+
+- "Evaluate / test / benchmark my agent", or build a regression / CI gate
+- Grade answers for correctness, tool use, cost, or subjective quality
+- Track a metric across versions (did this change help or regress?)
+
+**Topics covered:**
+
+- `Suite.from_list` + `run_agent`; the `RunResult` scorecard (`summary`, `pass_rate`, `score_stats`, `value_counts`)
+- Prebuilt scorers — `final_answer_matches`, `tool_called`, `no_tool_errors`, `token_budget`, `failure_attribution`, `agent_judge`
+- Custom `@scorer` + the return-type → aggregation rule (bool → pass_rate / num → score_stats / str → value_counts)
+- CI with deterministic `TestConfig` cassettes (agent factory + `model_config`)
+- Persistence — `store_dir`, `load_run`, `diff().regressions`; grading existing traces with `evaluate_traces`
+
+**See also:** `ag2-eval-comparison` for head-to-head and leaderboard comparison.
+
+### ag2-eval-comparison
+
+Compare AG2 agents, models, or prompts to decide which is better — a leaderboard or head-to-head.
+
+**Use when:**
+
+- A/B test prompts or models; rank N configs on a leaderboard
+- Decide which of two is better, head-to-head
+- Collect human preference labels
+
+**Topics covered:**
+
+- `run_variants` + `Variants.from_configs` / `from_prompts` / `from_tools` / `from_middleware` / `from_targets`; `board.summary` / `best` / `results`
+- `run_pairwise` + `pairwise_judge` — dual-order position swap, `win_rate` (Wilson CI), `flips`, `agreement` (Cohen's κ)
+- `human_pairwise` — blinded human vote via an inline `ask` callback
+- Offline labeling at scale — `export_pairwise_cases`, `human_labels`, `evaluate_pairwise`
+
+**See also:** `ag2-evaluation` for running and grading a single agent.
+
 ## Skill Structure
 
 Each skill contains:
