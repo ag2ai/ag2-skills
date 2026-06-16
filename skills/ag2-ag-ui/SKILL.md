@@ -30,6 +30,8 @@ For a custom narrow-purpose API where you own the contract end-to-end, skip AG-U
 pip install "ag2[ag-ui]"
 ```
 
+> Required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
+
 ## 60-second recipe — FastAPI server
 
 ```python title="run_ag_ui.py"

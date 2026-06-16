@@ -20,7 +20,7 @@ To compare two-plus builds head-to-head or on a leaderboard, use `ag2-eval-compa
 pip install "ag2[openai,tracing]"
 ```
 
-`run_agent` reconstructs each task's trace from OpenTelemetry spans, so the `tracing` extra is required.
+`run_agent` reconstructs each task's trace from OpenTelemetry spans, so the `tracing` extra is required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
 
 ## The loop — dataset, agent, scorers, run_agent
 

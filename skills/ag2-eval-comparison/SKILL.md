@@ -19,6 +19,8 @@ For running and grading a single agent (scorers, CI, persistence), use `ag2-eval
 pip install "ag2[openai,tracing]"
 ```
 
+> Required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
+
 ## Leaderboard — run_variants
 
 Vary ONE axis (a `Variants.from_*` constructor fixes it), score each, rank:

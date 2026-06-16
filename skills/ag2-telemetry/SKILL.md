@@ -23,6 +23,8 @@ If they just want quick stdout debugging, point them at `LoggingMiddleware` inst
 pip install "ag2[openai,tracing]"
 ```
 
+> Required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
+
 ## 60-second recipe
 
 ```python
