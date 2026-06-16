@@ -142,4 +142,4 @@ tools = [TavilySearchTool(
 - **Anthropic tool versions default to older revisions** — pin `version="web_search_20260209"` etc. when you need dynamic filtering on Opus 4.6 / Sonnet 4.6.
 - **`FilesystemToolkit` paths are sandboxed** — by design. Don't try to bypass the path-traversal guard; choose a wider `base_path` instead.
 - **Toolkits and individual tools mix freely** — `tools=[fs, exa, my_custom_tool]` is fine.
-- **Optional dependency missing** — `DuckDuckSearchTool`, `ExaToolkit`, `TavilySearchTool` need their `ag2[<extra>]` install. Without it you get a clear `ImportError` from the config-fallback layer, not a confusing crash.
+- **Optional dependency missing** — `DuckDuckSearchTool`, `ExaToolkit`, `TavilySearchTool` need their `ag2[<extra>]` install. Without it you get a clear `ImportError` from the config-fallback layer, not a confusing crash. Install the extra before delivering the code. If you cannot run commands, state the exact `pip install` command.

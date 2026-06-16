@@ -16,7 +16,7 @@ Read this file first when a request mentions "AG2 beta", "autogen.beta", or buil
 
 Anything you build with AG2 needs three things in place. Get these right once and the rest of the skills run cleanly:
 
-1. **Install the right provider extra** — `pip install "ag2[openai]"`, `ag2[anthropic]`, `ag2[gemini]`, etc. The `*Config` class will raise `ImportError: ... requires optional dependencies` without it.
+1. **Install the right provider extra** — `pip install "ag2[openai]"`, `ag2[anthropic]`, `ag2[gemini]`, etc. The `*Config` class will raise `ImportError: ... requires optional dependencies` without it. **Run the install before delivering code.** If you cannot run commands, state the exact `pip install` command. This is a required step.
 2. **Set the matching API key** — `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). Loading from a project-root `.env` via `from dotenv import load_dotenv; load_dotenv()` is the common pattern.
 3. **Sanity-check the install** — `python -c "import sys, autogen; print(sys.executable, autogen.__version__)"`. If you have multiple Python environments, this confirms which `ag2` your script will actually import.
 

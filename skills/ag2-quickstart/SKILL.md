@@ -15,6 +15,17 @@ license: Apache-2.0
 
 ## Prerequisites
 
+> **Required step: install dependencies before finishing.**
+> After writing AG2 code, install the matching provider extra (plus any feature extra the task needs, e.g. `ag-ui`, `tracing`). Run the install:
+>
+> ```bash
+> pip install "ag2[openai]"   # swap in the provider/extra you used
+> ```
+>
+> If you cannot run commands, state the exact `pip install` command. This is part of finishing the task, not an optional note.
+>
+> For a multi-file project (more than a throwaway script), also drop a `requirements.txt` pinning `ag2` with the extras you used (e.g. `ag2[openai]>=0.13.4`) so the environment is reproducible.
+
 Install the right provider extra and have a key for it. Each `*Config` requires its provider SDK — without the matching extra you'll see `ImportError: ... requires optional dependencies. Install with pip install "ag2[<provider>]"`.
 
 | Provider | Install | Env var | Config class |
