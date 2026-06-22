@@ -1,6 +1,6 @@
 ---
 name: ag2-overview
-description: Map of AG2 beta capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 beta (autogen.beta) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, telemetry, testing, or evaluation.
+description: Map of AG2 beta capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 beta (autogen.beta) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, MCP server hosting, A2A protocol, realtime voice, telemetry, testing, or evaluation.
 license: Apache-2.0
 ---
 
@@ -41,6 +41,9 @@ Full per-provider table (install + env var + config class) lives in `ag2-quickst
 | Observability, alerts, halts | `ag2-observers-and-alerts` | `BaseObserver`, `TokenMonitor`, `LoopDetector`, `EventWatch`, `CadenceWatch`, `AlertPolicy`, `HaltEvent` |
 | Send images / audio / video / PDFs in | `ag2-multimodal-input` | `ImageInput`, `AudioInput`, `VideoInput`, `DocumentInput`, `FilesAPI` |
 | Web frontend via the AG-UI protocol | `ag2-ag-ui` | `AGUIStream`, FastAPI mount, CopilotKit |
+| Serve an agent as an MCP server (server side) | `ag2-mcp` | `MCPServer`, stdio / HTTP, prompts, resources, `SessionConfig`, `AskContext` |
+| Expose an agent over the A2A protocol | `ag2-a2a` | `A2AServer`, `build_jsonrpc` / `build_rest` / `build_grpc`, `AgentCard`, `A2AConfig` (consume remote) |
+| Realtime voice / live audio (talking agent, STT, TTS) | `ag2-live` | `LiveAgent`, `GeminiRealTimeConfig` / `OpenAIRealTimeConfig`, `SoundDeviceRecorder` / `Player`, `OpenAITranscriber`, `TTSObserver` |
 | OpenTelemetry traces / metrics | `ag2-telemetry` | `TelemetryMiddleware`, GenAI semconv attributes, content capture |
 
 ## Multi-agent networks
