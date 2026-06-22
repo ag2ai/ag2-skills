@@ -37,7 +37,7 @@ If the user is unsure, the rule of thumb: **need any condition more complex than
 | Participants | 2+ |
 | Turn order | Whatever `TransitionGraph` says |
 | Auto-close | Yes — when graph emits `TerminateTarget` or `max_turns` is hit |
-| Default view | `WindowedSummary(recent_n=N*2)` |
+| Default view | `NamedWindowedSummary(recent_n=N*2)` |
 | Default expectations | `turn_within(120s, warn)`, `turn_within(600s, auto_close)` |
 | Required knob | `{"graph": <TransitionGraph.to_dict()>}` |
 
@@ -264,7 +264,9 @@ triage_agent = Agent("triage", prompt="…", config=config)
 @triage_agent.tool
 async def escalate(reason: str = "") -> Handoff:
     """Escalate this ticket to the security reviewer."""
-    return Handoff(target=security.agent_id, reason=reason)
+    # Handoff.target is the participant's Passport NAME, not a raw agent_id —
+    # the framework resolves name → id at packet-finalize via the hub's name directory.
+    return Handoff(target="security", reason=reason)
 
 
 triage = await triage_hc.register(
@@ -293,14 +295,13 @@ async def set_route(route: str, channel: ChannelInject) -> str:
     return f"route set to {route!r}"
 ```
 
-`set_context(channel, key, value)` is a thin wrapper that emits `EV_CONTEXT_SET` with `audience=[]` (state-only; no participant is notified). Equivalent raw form:
+`set_context(channel, key, value)` is a thin wrapper that emits `EV_CONTEXT_SET` with the default broadcast audience (`audience=None` — visible to every participant; the mutation lands on `WorkflowState.context_vars` after fold). Equivalent raw form:
 
 ```python
 await channel.send(
     "",
     event_type=EV_CONTEXT_SET,
     event_data={"set": {"route": route}},
-    audience=[],
 )
 ```
 
@@ -504,7 +505,9 @@ def escalate(reason: str) -> ReplyResult:
 # Beta network — attach to the Agent *before* registering with the hub
 @triage_agent.tool
 async def escalate(reason: str = "") -> Handoff:
-    return Handoff(target=security_reviewer.agent_id, reason=reason)
+    # Handoff.target is the Passport NAME (resolved name → id by the framework),
+    # whereas AgentTarget in the graph takes the raw agent_id.
+    return Handoff(target="security_reviewer", reason=reason)
 
 # Plus the matching transition in the graph (as documentation/fallback):
 Transition(when=ToolCalled("escalate"), then=AgentTarget(security_reviewer.agent_id))

@@ -11,7 +11,7 @@ license: Apache-2.0
 Reach for this skill when the user wants to add a capability that AG2 already ships. Two families:
 
 1. **Provider-native tools** (`autogen.beta.tools` — `WebSearchTool`, `CodeExecutionTool`, etc.) — executed server-side by Anthropic / OpenAI / Gemini. No Python implementation on your side.
-2. **Common toolkits** (`autogen.beta.tools` — `FilesystemToolkit`, `DuckDuckSearchTool`, `ExaToolkit`, `TavilySearchTool`, `SkillsToolkit`) — regular Python that runs in your process and works with **every** provider.
+2. **Common toolkits** (`autogen.beta.tools` — `FilesystemToolkit`, `DuckDuckSearchTool`, `TavilySearchTool`, `SkillsToolkit`; plus `ExaToolkit` from `autogen.beta.extensions.tools.search`) — regular Python that runs in your process and works with **every** provider.
 
 For shell commands, use `ag2-shell-tool` (it's important enough to live in its own skill).
 For custom Python tools, use `ag2-add-custom-tool`.
@@ -81,7 +81,7 @@ agent = Agent(
     tools=[ImageGenerationTool(quality="high", size="1024x1024", output_format="png")],
 )
 reply = await agent.ask("Generate a logo for a coffee shop.")
-images: list[bytes] = reply.images
+images = reply.files  # list[BinaryResult]
 ```
 
 ### Filesystem (sandboxed, any provider)
@@ -108,8 +108,8 @@ tools = [DuckDuckSearchTool(max_results=10, region="us-en", safesearch="moderate
 
 ```python
 import os
-from autogen.beta.tools import ExaToolkit
-# requires: pip install ag2[exa]
+from autogen.beta.extensions.tools.search import ExaToolkit
+# requires: pip install "exa-py>=2.12.1,<3"  (no ag2[exa] extra — install the package directly)
 
 tools = [ExaToolkit(api_key=os.environ["EXA_API_KEY"])]
 ```
@@ -142,4 +142,4 @@ tools = [TavilySearchTool(
 - **Anthropic tool versions default to older revisions** — pin `version="web_search_20260209"` etc. when you need dynamic filtering on Opus 4.6 / Sonnet 4.6.
 - **`FilesystemToolkit` paths are sandboxed** — by design. Don't try to bypass the path-traversal guard; choose a wider `base_path` instead.
 - **Toolkits and individual tools mix freely** — `tools=[fs, exa, my_custom_tool]` is fine.
-- **Optional dependency missing** — `DuckDuckSearchTool`, `ExaToolkit`, `TavilySearchTool` need their `ag2[<extra>]` install. Without it you get a clear `ImportError` from the config-fallback layer, not a confusing crash. Install the extra before delivering the code. If you cannot run commands, state the exact `pip install` command.
+- **Optional dependency missing** — `DuckDuckSearchTool` (`ag2[ddgs]`) and `TavilySearchTool` (`ag2[tavily]`) need their `ag2[<extra>]` install; `ExaToolkit` is a beta extension with **no `ag2` extra** — install its package directly (`pip install "exa-py>=2.12.1,<3"`). Without the dependency you get a clear `ImportError` from the config-fallback layer, not a confusing crash. Install before delivering the code. If you cannot run commands, state the exact `pip install` command.

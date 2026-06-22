@@ -1,6 +1,6 @@
 ---
 name: ag2-eval-comparison
-description: Compare AG2 beta agents, models, or prompts to decide which is better. run_variants scores several named configurations on one suite and ranks them on a leaderboard (Variants.from_configs, from_prompts, from_tools, from_middleware, from_targets). run_pairwise with pairwise_judge does head-to-head LLM comparison using a dual-order position swap (a win counts only if it survives the swap, else a tie), reporting win-rate with a Wilson 95% CI, wins, losses, ties, flips, and agreement (Cohen's kappa). human_pairwise collects a person's blinded vote inline, or via an exported manifest with export_pairwise_cases and human_labels. Use when the user wants to A/B test prompts or models, run a leaderboard, pick a winner, judge head-to-head, measure win-rate, or collect human preference labels. For running and grading a single agent, see ag2-evaluation.
+description: Compare AG2 beta agents, models, or prompts to decide which is better. run_variants scores several named agents on one suite and ranks them on a leaderboard (Variants holds a mapping of named Agent instances plus an axis label). run_pairwise with pairwise_judge does head-to-head LLM comparison using a dual-order position swap (a win counts only if it survives the swap, else a tie), reporting win-rate with a Wilson 95% CI, wins, losses, ties, flips, and agreement (Cohen's kappa). human_pairwise collects a person's blinded vote inline, or via an exported manifest with export_pairwise_cases and human_labels. Use when the user wants to A/B test prompts or models, run a leaderboard, pick a winner, judge head-to-head, measure win-rate, or collect human preference labels. For running and grading a single agent, see ag2-evaluation.
 license: Apache-2.0
 ---
 
@@ -23,7 +23,7 @@ pip install "ag2[openai,tracing]"
 
 ## Leaderboard — run_variants
 
-Vary ONE axis (a `Variants.from_*` constructor fixes it), score each, rank:
+`Variants` is a frozen dataclass holding a mapping of named **`Agent` instances** plus an `axis` label naming what you varied. Build each agent with the one thing that differs (config, prompt, tools, middleware, …), hold the rest fixed, score each, rank:
 
 ```python
 from autogen.beta import Agent
@@ -31,25 +31,26 @@ from autogen.beta.config import OpenAIConfig, GeminiConfig
 from autogen.beta.eval import Variants, run_variants
 from autogen.beta.eval.scorers import agent_judge
 
-def build(*, config=None):
-    return Agent("a", prompt="Answer helpfully.", config=config)
-
 board = await run_variants(
     suite,
-    variants=Variants.from_configs(build, {
-        "gpt-4o": OpenAIConfig("gpt-4o"),
-        "flash":  GeminiConfig("gemini-3-flash-preview"),
-    }),
+    variants=Variants(
+        {
+            "gpt-4o": Agent("a", prompt="Answer helpfully.", config=OpenAIConfig("gpt-4o")),
+            "flash":  Agent("a", prompt="Answer helpfully.", config=GeminiConfig("gemini-3-flash-preview")),
+        },
+        axis="config",                  # label for what was varied (used in summary)
+    ),
     scorers=[agent_judge(OpenAIConfig("gpt-4o"), criterion="Helpful and accurate.", key="quality")],
     store_dir="runs",
     repeats=5,                          # optional: N runs per variant for stability
 )
 print(board.summary("quality"))         # ranked leaderboard
 board.best("quality")                   # winning variant name (None if tied)
+board.leaderboard("quality")            # list[LeaderboardRow] — variant, score, n, rank
 board.results["gpt-4o"]                 # each variant's full RunResult
 ```
 
-Axes: `from_configs` (model), `from_prompts` (prompt), `from_tools`, `from_middleware`, `from_targets` (whole build). Tied scores share a rank; a 3-way tie usually means the eval isn't discriminating — make it harder, or score quality with a judge.
+Vary whatever you like across the agents — set `axis` to label it (e.g. `"config"`, `"prompt"`, `"tools"`). Tied scores share a rank; a 3-way tie usually means the eval isn't discriminating — make it harder, or score quality with a judge.
 
 ## Head-to-head (LLM) — run_pairwise + pairwise_judge
 
@@ -60,16 +61,16 @@ from autogen.beta.eval import run_pairwise
 from autogen.beta.eval.scorers import pairwise_judge
 
 result = await run_pairwise(
-    suite, variant_a=build_v1, variant_b=build_v2,
+    suite, variant_a=agent_v1, variant_b=agent_v2,
     comparators=[pairwise_judge(OpenAIConfig("gpt-4o"), criterion="more helpful answer", key="quality")],
     store_dir="runs",
 )
 wr = result.win_rate("quality")         # B's win-rate
 print(wr.rate, wr.ci, wr.wins, wr.losses, wr.ties)   # ties count 0.5; ci is a Wilson 95% interval
-print(result.flips("quality"))          # pairs where the two orders disagreed
+print(result.flips("quality"))          # int — count of cases where the two orders disagreed
 ```
 
-`variant_a` / `variant_b` are agents or build factories. `result.agreement("quality", "human")` gives Cohen's κ between two comparators. Use a judge model different from the variants.
+`variant_a` / `variant_b` are **`Agent` instances**; `comparators=` is a plural iterable. `result.agreement("quality", "human")` returns an `Agreement` (`.rate`, `.cohen_kappa`, …) between two comparator keys. Use a judge model different from the variants.
 
 ## Head-to-head (human) — human_pairwise
 
@@ -81,7 +82,7 @@ from autogen.beta.eval.scorers import human_pairwise
 async def ask(task, response_1, response_2) -> str:
     return await my_ui.compare(task.inputs["input"], response_1, response_2)   # "1" / "2" / "tie"
 
-result = await run_pairwise(suite, variant_a=build_v1, variant_b=build_v2,
+result = await run_pairwise(suite, variant_a=agent_v1, variant_b=agent_v2,
                             comparators=[human_pairwise(key="quality", ask=ask)], store_dir="runs")
 ```
 
@@ -104,9 +105,9 @@ The manifest hides which model is which; its `first_variant` field de-blinds it 
 
 - **Judge == a variant's model** — self-preference bias; use a different judge model.
 - **Bare win-rate on few pairs** — report `wr.ci` (Wilson); a small n straddles 50%.
-- **Variants not factories** — `run_variants` / `run_pairwise` need build callables so each task and order gets a fresh agent. Keep `pairwise_judge`'s default swap (don't set `swap=False`) for unbiased verdicts.
+- **Passing factories, not agents** — `run_variants` (`variants=Variants({name: Agent(...)})`) and `run_pairwise` (`variant_a=`/`variant_b=`) take **`Agent` instances**, not build callables. Vary the model per task with `model_config=` (a `dict[task_id, ModelConfig]`) rather than rebuilding the agent. Keep `pairwise_judge`'s default swap (don't set `swap=False`) for unbiased verdicts.
 
 ## Going deeper
 
-- `website/docs/beta/evaluation/` — `variants` (the `from_*` axes), `pairwise` (comparators, win-rate, blinded labeling)
+- `website/docs/beta/evaluation/` — `variants` (the `Variants` mapping + `axis`), `pairwise` (comparators, win-rate, blinded labeling)
 - `ag2-evaluation` — single-agent run/grade, scorers, CI, persistence

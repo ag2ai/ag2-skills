@@ -29,14 +29,14 @@ Full per-provider table (install + env var + config class) lives in `ag2-quickst
 | Build an `Agent` from scratch, pick a model | `ag2-quickstart` | `Agent`, `ModelConfig`, `ask()` / `reply.ask()` chaining, providers, env vars |
 | Give the Agent a custom Python tool | `ag2-add-custom-tool` | `@tool`, sync/async, `ToolResult`, `Context`, `Inject`, `Variable`, `Depends` |
 | Use shipped tools (web search, code exec, MCP, etc.) | `ag2-use-builtin-tools` | `WebSearchTool`, `WebFetchTool`, `CodeExecutionTool`, `MCPServerTool`, `ImageGenerationTool`, `MemoryTool`, `FilesystemToolkit`, `DuckDuckSearchTool`, `ExaToolkit`, `TavilySearchTool` |
-| Run shell commands from an agent | `ag2-shell-tool` | `LocalShellTool` (any provider), provider-side `ShellTool`, sandboxing (`allowed`/`blocked`/`ignore`/`readonly`) |
+| Run shell commands from an agent | `ag2-shell-tool` | `SandboxShellTool` + `LocalEnvironment` (any provider), provider-side `ShellTool` (OpenAI Responses), sandboxing (`allowed`/`blocked`/`ignore`/`readonly`) |
 | Get typed Pydantic / dataclass output | `ag2-structured-output` | `response_schema=`, `ResponseSchema`, `@response_schema`, `PromptedSchema`, `reply.content()`, retries |
 | Multi-agent: parallel subtasks or named delegates | `ag2-subagent-delegation` | `tasks=TaskConfig()`, `run_subtasks(parallel=True)`, `Agent.as_tool()`, `persistent_stream` |
 | Pause for human input or gate a tool with approval | `ag2-hitl` | `context.input()`, `hitl_hook`, `approval_required()` middleware |
 | Logging, retry, history-trim, custom interception | `ag2-middleware` | `BaseMiddleware`, `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, tool middleware |
 | Test agents and tools | `ag2-testing` | `TestConfig`, mocking LLM responses, simulating `ToolCallEvent` |
 | Evaluate / benchmark an agent offline, CI gate, scorers | `ag2-evaluation` | `Suite`, `run_agent`, `final_answer_matches` / `tool_called` / `agent_judge`, `@scorer`, `RunResult`, `TestConfig`, `evaluate_traces`, `diff().regressions` |
-| Compare models / prompts — leaderboard or head-to-head | `ag2-eval-comparison` | `run_variants` (`Variants.from_*`), `run_pairwise` + `pairwise_judge` (win-rate, Wilson CI, flips, κ), `human_pairwise` |
+| Compare models / prompts — leaderboard or head-to-head | `ag2-eval-comparison` | `run_variants` (`Variants({name: Agent}, axis=...)`), `run_pairwise` + `pairwise_judge` (win-rate, Wilson CI, flips, κ), `human_pairwise` |
 | Persistent memory across runs, history compaction, assembly | `ag2-knowledge-and-memory` | `KnowledgeStore`, `KnowledgeConfig`, `WorkingMemoryAggregate`, `AssemblyPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `TailWindowCompact`, `SummarizeCompact` |
 | Observability, alerts, halts | `ag2-observers-and-alerts` | `BaseObserver`, `TokenMonitor`, `LoopDetector`, `EventWatch`, `CadenceWatch`, `AlertPolicy`, `HaltEvent` |
 | Send images / audio / video / PDFs in | `ag2-multimodal-input` | `ImageInput`, `AudioInput`, `VideoInput`, `DocumentInput`, `FilesAPI` |
@@ -52,6 +52,6 @@ Whenever two or more agents need to interact, load **`ag2-network-quickstart`** 
 | N-party round-robin / fixed turn order | `ag2-network-discussion` | `discussion` adapter, `ORDERING_ROUND_ROBIN` knob, `can_send` probe pattern, view-window sizing |
 | Declarative orchestration / `TransitionGraph` / GroupChat migration | `ag2-network-workflow` | `workflow` adapter, `TransitionGraph.sequence` / `.round_robin`, `Handoff`, `ToolCalled`, `ContextEquals`, `context_vars`, 8 cookbook patterns, classic-`GroupChat` migration |
 | Rate limits, access policy, expectations, audit, capability tracking | `ag2-network-governance` | `Rule` (`AccessBlock` / `LimitsBlock` / `RateBlock` / `InboxBlock`), `Expectation`s, audit log + `AUDIT_KIND_*`, task observation, `Resume.observed` |
-| Custom envelope handlers, view policies, peer discovery, the six LLM-facing network tools | `ag2-network-tools-and-views` | `say` / `delegate` / `peers` / `channels` / `tasks` / `context` tools, `agent_client.on_envelope`, `ViewPolicy` (`FullTranscript` / `WindowedSummary`), `skill_md` peer discovery, full `Envelope` / `EV_*` reference |
+| Custom envelope handlers, view policies, peer discovery, the LLM-facing network tools | `ag2-network-tools-and-views` | adapter-owned `say` + the five `NetworkPlugin` tools (`delegate` / `peers` / `channels` / `tasks` / `context`), `agent_client.on_envelope`, `ViewPolicy` (`FullTranscript` / `WindowedSummary` / `NamedWindowedSummary`), `skill_md` peer discovery, full `Envelope` / `EV_*` reference |
 
 **Not a network task:** if the user has *one* agent recursively spawning its own sub-tasks (via `run_subtask` / `run_subtasks(parallel=True)`) or calling another agent as a lightweight tool, use **`ag2-subagent-delegation`** — no hub, no registry, no channels. The network is for *distinct, registered* agents collaborating through a shared hub.

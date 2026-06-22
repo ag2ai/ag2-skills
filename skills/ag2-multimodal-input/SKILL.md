@@ -70,8 +70,8 @@ ImageInput(file_id="file-abc123")               # provider-uploaded
 | Video (URL) | – | – | ✓ | – |
 | Video (binary) | – | – | ✓ | – |
 | Document (URL) | – | ✓ | ✓ | ✓ |
-| Document (binary) | – | – | ✓ | ✓ |
-| File ID | – | ✓ | – | ✓ |
+| Document (binary) | ✓ | ✓ | ✓ | ✓ |
+| File ID | ✓ | ✓ | ✓ | ✓ |
 
 Unsupported combinations raise `UnsupportedInputError` with a clear message.
 
@@ -184,7 +184,7 @@ reply = await agent.ask("Summarize this report.", doc)
 - **Picking a provider that doesn't support your input type** — silently you'll get `UnsupportedInputError`. Check the matrix; Gemini is broadest.
 - **`FilesAPI.read()` on Gemini** — raises `NotImplementedError`. Gemini doesn't expose download.
 - **Calling `files.upload(data=...)` without `filename=`** — raises `ValueError`. Filename is required for in-memory uploads.
-- **Providing `path=` and `data=` to the same factory** — pick one source. Same for `file_id=`.
+- **Supplying more than one source to a factory** — not an error. The factory resolves in priority order `url` > `file_id` > `path` > `data`, so extra sources are silently ignored. Pass exactly one to get what you intend. Supplying **zero** sources raises `ValueError`.
 - **Anthropic `ImageInput(file_id=...)` without `filename=`** — Anthropic decides block type (image vs document) by filename extension. Pass it.
 - **Gemini `vendor_metadata` keys are nested** — `video_metadata` itself takes a dict. Check the doc table for shape.
 - **Forgetting to wait for Gemini file processing** — large uploads have a `PROCESSING` state. Poll `client.files.get(name=...)` until ready before referencing the URI.

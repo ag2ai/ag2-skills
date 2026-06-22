@@ -4,6 +4,10 @@ A collection of skills for [AG2](https://github.com/ag2ai/ag2) — an async, pro
 
 Skills follow the [Agent Skills](https://agentskills.io/) format.
 
+## Compatibility
+
+These skills document the **AG2 Beta API** (the `autogen.beta` namespace) only. They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 0.13.4**). To see what has changed in the beta API upstream since that pin, run [`scripts/check_drift.sh`](scripts/check_drift.sh).
+
 ## Installation
 
 Install the whole collection with the [`skills`](https://skills.sh) CLI:
@@ -107,7 +111,7 @@ Give an AG2 `Agent` the ability to run shell commands.
 
 **Topics covered:**
 
-- `LocalShellTool` (client-side `subprocess`, works with any provider)
+- `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider)
 - Provider-native `ShellTool` (Anthropic / OpenAI execution)
 - Sandboxing — `allowed`, `blocked`, `ignore`, `readonly`
 
@@ -227,7 +231,7 @@ Build a multi-agent AG2 network — the standard pattern whenever two or more ag
 **Topics covered:**
 
 - The mental model — `Hub`, `HubClient`, `AgentClient`, `Envelope`, `Channel`, `LocalLink`
-- `Hub.open(MemoryKnowledgeStore())` and the channel lifecycle (INVITED → ACTIVE → CLOSING → CLOSED)
+- `Hub.open(MemoryKnowledgeStore())` and the channel lifecycle (PENDING → ACTIVE → CLOSING → CLOSED)
 - `Passport` / `Resume` identity basics; `Passport.kind` (`"agent"` / `"human"` / `"remote_agent"`)
 - `HumanClient` / `register_human` — non-LLM participants (user-in-the-loop, queue gateway, UI bridge)
 - The two 2-party channel adapters — `consulting` (strict 1Q1R, auto-closes) and `conversation` (free-form, app-controlled halt)
@@ -425,7 +429,7 @@ Compare AG2 agents, models, or prompts to decide which is better — a leaderboa
 
 **Topics covered:**
 
-- `run_variants` + `Variants.from_configs` / `from_prompts` / `from_tools` / `from_middleware` / `from_targets`; `board.summary` / `best` / `results`
+- `run_variants` + `Variants({name: Agent(...)}, axis=...)`; `result.leaderboard` / `best` / `summary` / `results`
 - `run_pairwise` + `pairwise_judge` — dual-order position swap, `win_rate` (Wilson CI), `flips`, `agreement` (Cohen's κ)
 - `human_pairwise` — blinded human vote via an inline `ask` callback
 - Offline labeling at scale — `export_pairwise_cases`, `human_labels`, `evaluate_pairwise`

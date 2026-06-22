@@ -49,7 +49,7 @@ Observer callbacks support full dependency injection (`Context`, `Inject`, `Vari
 
 ```python
 from autogen.beta import Agent
-from autogen.beta.observer import LoopDetector, TokenMonitor
+from autogen.beta.observers import LoopDetector, TokenMonitor
 
 agent = Agent(
     "assistant",
@@ -70,7 +70,7 @@ A `BaseObserver` pairs a `Watch` (when to fire) with a `process()` method (what 
 
 ```python
 from autogen.beta import Context
-from autogen.beta.observer import BaseObserver
+from autogen.beta.observers import BaseObserver
 from autogen.beta.watch import CadenceWatch
 from autogen.beta.events import BaseEvent, ModelResponse
 from autogen.beta.events.alert import ObserverAlert, Severity
@@ -142,7 +142,7 @@ When `assembly=[...]` is non-empty, the harness automatically wires `_HaltCheckM
 
 ```python
 from autogen.beta import Context
-from autogen.beta.observer import BaseObserver
+from autogen.beta.observers import BaseObserver
 from autogen.beta.events import BaseEvent, ToolCallEvent
 from autogen.beta.events.alert import HaltEvent, ObserverAlert, Severity
 from autogen.beta.policies import AlertPolicy
@@ -217,4 +217,4 @@ await agent.ask("...", stream=stream)
 - **Watch callback assumes `events` is non-empty** — for time-driven watches (`DelayWatch`, `IntervalWatch`, `CronWatch`), `events` is always `[]`.
 - **Forgetting `process()` is async** — `BaseObserver.process` must be `async def`.
 - **Subscribing with `subscribe(fn)` when you wanted `subscribe()` decorator** — both work; the bare-call form is `stream.subscribe(fn)`, the decorator form is `@stream.subscribe()` (with parens).
-- **`CadenceWatch` with no `n` and no `max_wait`** — invalid; at least one is required.
+- **`CadenceWatch` with no `n` and no `max_wait`** — raises `ValueError`; at least one is required.
