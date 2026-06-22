@@ -436,6 +436,53 @@ Compare AG2 agents, models, or prompts to decide which is better — a leaderboa
 
 **See also:** `ag2-evaluation` for running and grading a single agent.
 
+### ag2-mcp
+
+Host an MCP server that exposes an AG2 `Agent` (plus prompts and resources) to MCP clients like Claude Desktop, Cursor, or the MCP Inspector — the **server** side of MCP.
+
+**Use when:**
+
+- You want other MCP clients to call *your* agent (over stdio or streamable HTTP)
+- Exposing prompts / resources alongside the agent's `ask` tool
+
+**Topics covered:**
+
+- `MCPServer(agent)`, `run_stdio()` / ASGI HTTP, `SessionConfig` (multi-turn history)
+- `Prompt` / `PromptArgument` / `PromptMessage`, `Resource` / `ResourceTemplate`
+- `AskContext` / `ContextProvider` per-request injection, `build_ask_tool`, OAuth2 `security=`
+
+**See also:** `ag2-use-builtin-tools` (`MCPServerTool`) for *consuming* external MCP servers (client side).
+
+### ag2-a2a
+
+Expose an AG2 `Agent` over the Agent-to-Agent (A2A) protocol so any A2A-compliant client (or another AG2 agent) can call it across process / host boundaries.
+
+**Use when:**
+
+- Making an agent reachable as a standard networked A2A service (JSON-RPC / REST / gRPC)
+- Interop with non-AG2 A2A clients; declared auth schemes, push notifications, multi-tenancy
+
+**Topics covered:**
+
+- `A2AServer(agent)` + `build_jsonrpc` / `build_rest` / `build_grpc`; `AgentCard` via `build_card`
+- Consuming a remote A2A agent — `A2AConfig(card_url=...)`
+- Security schemes (`bearer_scheme` / `api_key_scheme` / `oauth2_scheme` / `require`), in-process `testing` helpers
+
+### ag2-live
+
+Build realtime voice / live-audio agents — bidirectional speech in, synthesized speech out.
+
+**Use when:**
+
+- Building a talking agent, phone / voice assistant, or live transcription
+- Adding TTS playback to an existing text agent
+
+**Topics covered:**
+
+- `LiveAgent` + `agent.run()`; Gemini Live (`GeminiRealTimeConfig`) and OpenAI Realtime (`OpenAIRealTimeConfig`)
+- Audio I/O over the sound card — `SoundDeviceRecorder` / `SoundDevicePlayer`
+- Speech-to-text (`OpenAITranscriber` / `OpenAITranslationTranscriber`, `.pipe(agent)`), TTS (`OpenAITTSConfig`), `TTSObserver`
+
 ## Skill Structure
 
 Each skill contains:
