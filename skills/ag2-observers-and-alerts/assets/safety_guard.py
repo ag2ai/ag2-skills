@@ -25,7 +25,7 @@ from autogen.beta.annotations import Context
 from autogen.beta.config import GeminiConfig
 from autogen.beta.events import BaseEvent, ToolCallEvent
 from autogen.beta.events.alert import HaltEvent, ObserverAlert, Severity
-from autogen.beta.observer import BaseObserver
+from autogen.beta.observers import BaseObserver
 from autogen.beta.policies import AlertPolicy
 from autogen.beta.stream import MemoryStream
 from autogen.beta.watch import EventWatch

@@ -152,7 +152,7 @@ Self-delegation via `as_tool()` *can* recurse — the child has the same `sub_ta
 
 The simplest safe pattern is to **prefer the auto-injected `run_subtask` / `run_subtasks` path** for self-delegation. Sub-tasks spawned that way are constructed with `tasks=False`, so they have no `run_subtask` tools and recursion is structurally impossible.
 
-If you genuinely need recursive `as_tool()` self-delegation, write a tool middleware that increments a depth counter in `context.dependencies` and short-circuits past a threshold. The `subagents` module exports `subagent_tool`, `persistent_stream`, and `StreamFactory` from `autogen.beta.tools.subagents` — verify the current public surface there before relying on a built-in depth-limiting helper.
+If you genuinely need recursive `as_tool()` self-delegation, write a tool middleware that increments a depth counter in `context.dependencies` and short-circuits past a threshold. The `subagents` module exports `subagent_tool`, `background_agent_tool`, `persistent_stream`, and `StreamFactory` from `autogen.beta.tools.subagents` — verify the current public surface there before relying on a built-in depth-limiting helper.
 
 ## Sub-task streams
 
@@ -161,7 +161,7 @@ By default, each sub-task gets a fresh `MemoryStream` — its history is isolate
 | What | Behaviour | Why |
 |---|---|---|
 | **Dependencies** | Copied (top-level shallow) | Isolated; treat dependencies as read-only inside subtasks |
-| **Variables** | Copied; synced back on success | Concurrent-safe — sibling subtasks won't race-clobber a shared dict |
+| **Variables** | Copied; **not** synced back to the parent | Concurrent-safe — with siblings running via `asyncio.gather`, last-writer-wins would silently clobber values, so child mutations stay scoped to the child by design |
 | **History** | Fresh stream | Clean context; relevant info passes via the `context` tool parameter |
 | **Tools** | Inherited from parent (filtered by `TaskConfig`) | Sub-tasks need real capabilities to do work |
 
@@ -202,7 +202,7 @@ researcher.as_tool(description="Research a topic", stream=make_redis_stream)
 
 - **Forgetting to opt in** — `tasks=False` is the default. No `TaskConfig`, no `run_subtask` tools.
 - **Expecting sub-tasks to recurse with `run_subtask`** — they can't. Sub-tasks themselves have `tasks=False`. If you need deeper trees, use `Agent.as_tool()` self-delegation with a manual depth-counter middleware (see "Recursion safety" above).
-- **Sharing mutable variables expecting them to merge** — concurrent sub-tasks each copy variables; sibling mutations don't propagate. Each sub-task's variable mutations stay local until sync-back on success.
+- **Sharing mutable variables expecting them to merge** — each sub-task copies the parent's variables, and mutations are **never synced back** to the parent (not even on success). Sibling mutations don't propagate either. Pass any result you need back through the sub-task's return value, not via shared variables.
 - **Treating `dependencies` as scoped per sub-task** — only the top-level dict is copied. Mutable values inside it are still shared by reference. Treat dependencies as read-only inside sub-tasks.
 - **No `description=` on `as_tool()`** — the LLM doesn't know when to call it. Required parameter.
 - **`run_subtasks(parallel=False)` when work is concurrent** — defaults to `True` for a reason; only set `False` when later tasks depend on earlier results.

@@ -7,8 +7,8 @@ Four annotations let a tool pull values from execution context without exposing 
 | Annotation | Use for | Resolves from | Lifecycle |
 |---|---|---|---|
 | `Context` (positional or kw) | Whole-context access (variables, dependencies, stream, prompt, `input()`) | The current `Context` object | Per call |
-| `Inject(key=None, default=..., default_factory=...)` | Pre-built complex objects (DB pool, HTTP session) | `context.dependencies` dict | Per call |
-| `Variable(key=None, default=..., default_factory=...)` | Lightweight scalar state (API key, session id, flag) | `context.variables` dict | Per call (mutations persist within conversation) |
+| `Inject(real_name="", default=..., default_factory=...)` | Pre-built complex objects (DB pool, HTTP session) | `context.dependencies` dict | Per call |
+| `Variable(real_name="", default=..., default_factory=...)` | Lightweight scalar state (API key, session id, flag) | `context.variables` dict | Per call (mutations persist within conversation) |
 | `Depends(callable, use_cache=True)` | Computed-on-demand dependency, side-execution, yield-based teardown | Calls `callable` at execution time | Per call (cached within the same call by default) |
 
 Resolution annotations do **not** appear in the LLM-facing tool schema.

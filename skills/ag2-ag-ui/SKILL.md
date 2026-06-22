@@ -1,6 +1,6 @@
 ---
 name: ag2-ag-ui
-description: Expose an AG2 beta `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom React/Next.js, or any AG-UI client) can stream responses, render tool calls, sync shared state, and surface human-input checkpoints. Wraps the agent with `AGUIStream(agent)` and mounts it in FastAPI via `stream.dispatch(...)` or `stream.build_asgi()`. Use when the user wants a web frontend in front of an AG2 agent rather than a CLI / script.
+description: Expose an AG2 beta `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom React/Next.js, or any AG-UI client) can stream responses (text and reasoning), render tool calls, sync shared state, and track sub-task steps. Wraps the agent with `AGUIStream(agent)` and mounts it in FastAPI via `stream.dispatch(...)` or `stream.build_asgi()`. Use when the user wants a web frontend in front of an AG2 agent rather than a CLI / script.
 license: Apache-2.0
 ---
 
@@ -9,7 +9,7 @@ license: Apache-2.0
 ## When to use
 
 - The user is building a web UI (React / Next.js / anything HTTP+SSE) that should talk to an AG2 beta agent.
-- They want streaming text, tool-call rendering, shared state sync, or HITL checkpoints surfaced to the frontend with a standard protocol — not a custom REST/WebSocket contract.
+- They want streaming text, reasoning, tool-call rendering, shared state sync, or sub-task step tracking surfaced to the frontend with a standard protocol — not a custom REST/WebSocket contract.
 - They're using or considering CopilotKit (the recommended React client).
 
 For a custom narrow-purpose API where you own the contract end-to-end, skip AG-UI and write a plain endpoint instead.
@@ -18,11 +18,14 @@ For a custom narrow-purpose API where you own the contract end-to-end, skip AG-U
 
 | Feature | Status |
 |---|---|
-| Streaming text events (`TEXT_MESSAGE_*`, `TEXT_MESSAGE_CHUNK`) | ✓ |
+| Run lifecycle (`RUN_STARTED` / `RUN_FINISHED` / `RUN_ERROR`) | ✓ |
+| Streaming text events (`TEXT_MESSAGE_START` / `_CONTENT` / `_END` / `_CHUNK`) | ✓ |
+| Reasoning events (`REASONING_START` / `_END`, `REASONING_MESSAGE_START` / `_CONTENT` / `_END`) | ✓ |
 | Backend tool lifecycle (`TOOL_CALL_START` / `_ARGS` / `_RESULT` / `_END`) | ✓ |
 | Frontend-tool dispatch (`TOOL_CALL_CHUNK` for client tools in `RunAgentInput.tools`) | ✓ |
 | Shared-state snapshots (`STATE_SNAPSHOT`) | ✓ |
-| Human input checkpoints (surfaced as user-visible message events) | ✓ |
+| Sub-task steps (`STEP_STARTED` / `STEP_FINISHED`, emitted on `TaskStarted` / `TaskCompleted`) | ✓ |
+| Human input checkpoints surfaced as AG-UI events | ✗ — no human-input event family; `hitl_hook` passes through to `agent.ask` |
 
 ## Installation
 

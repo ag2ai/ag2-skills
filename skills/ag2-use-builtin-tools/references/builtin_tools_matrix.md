@@ -7,7 +7,7 @@
 | `CodeExecutionTool` | ✓ | ✓ | ✓ |
 | `WebSearchTool` | ✓ | ✓ | ✓ |
 | `WebFetchTool` | ✓ | ✗ | ✓ |
-| `ShellTool` | ✓ | ✓ | ✗ |
+| `ShellTool` | ✗ | ✓ (Responses) | ✗ |
 | `MCPServerTool` | ✓ | ✓ | ✗ |
 | `ImageGenerationTool` | ✗ | ✓ | ✗ |
 | `MemoryTool` | ✓ | ✗ | ✗ |
@@ -59,7 +59,7 @@ Unsupported parameters are silently ignored.
 | `output_compression` | 0–100, jpeg/webp only |
 | `partial_images` | 1–3, partial-stream count |
 
-Generated images surface on `reply.images: list[bytes]`.
+Generated images surface on `reply.files: list[BinaryResult]`.
 
 ## Anthropic tool versions
 
@@ -109,6 +109,8 @@ DuckDuckSearchTool(
 All parameters accept `Variable(...)` for deferred resolution.
 
 ### `ExaToolkit`
+
+Import from `autogen.beta.extensions.tools.search` (beta extension, not `autogen.beta.tools`).
 
 | Tool factory | Description |
 |---|---|
@@ -164,6 +166,6 @@ Three-step progressive disclosure: `list_skills` (catalog) → `load_skill` (ful
 | Tool | `pip install` |
 |---|---|
 | `DuckDuckSearchTool` | `ag2[ddgs]` |
-| `ExaToolkit` | `ag2[exa]` |
+| `ExaToolkit` | `"exa-py>=2.12.1,<3"` (no `ag2` extra — beta extension) |
 | `TavilySearchTool` | `ag2[tavily]` |
 | Provider-native tools | the provider's own extra (`ag2[anthropic]`, `ag2[openai]`, `ag2[gemini]`) |

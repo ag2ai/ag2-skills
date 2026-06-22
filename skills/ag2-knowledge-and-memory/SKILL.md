@@ -66,9 +66,9 @@ After each conversation the aggregate writes `/memory/working.md`. The next time
 |---|---|
 | `MemoryKnowledgeStore()` | Tests, ephemeral sessions |
 | `SqliteKnowledgeStore(path)` | Single-process durability — pragmatic default |
-| `DiskKnowledgeStore(path)` | Files should be human-readable on disk |
-| `RedisKnowledgeStore(url)` | Multi-process / cross-host sharing |
-| `LockedKnowledgeStore(inner, lock=...)` | Wrap any store to serialize concurrent writers |
+| `DiskKnowledgeStore(root)` | Files should be human-readable on disk — first arg is `root`; **requires the `watchdog` extra** (the `on_change` watcher uses it). Without `watchdog` installed, importing the class raises a missing-dependency error. |
+| `RedisKnowledgeStore(url_or_client)` | Multi-process / cross-host sharing — first arg is `url_or_client`: pass a Redis URL string *or* an already-built `redis.asyncio` client. A URL string also needs the `redis` package. |
+| `LockedKnowledgeStore(store, lock)` | Wrap any store to serialize concurrent writers — first arg is `store`, second is the `lock` (both positional). Reads pass through unlocked; only `write` / `delete` / `append` acquire the lock. |
 
 API (all async):
 

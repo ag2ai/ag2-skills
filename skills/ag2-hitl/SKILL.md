@@ -22,7 +22,7 @@ Two distinct mechanisms — pick by intent:
 
 ## Pattern 1 — `context.input()` for open questions
 
-A tool requests input via `Context.input(prompt, timeout=...)`. The agent must have a `hitl_hook` that knows how to collect that input.
+A tool requests input via `Context.input(message, timeout=...)`. The agent must have a `hitl_hook` that knows how to collect that input.
 
 ```python
 from autogen.beta import Agent, Context, tool
@@ -45,7 +45,7 @@ def hitl_hook(event: HumanInputRequest) -> HumanMessage:
 agent = Agent("dba", tools=[execute_query], hitl_hook=hitl_hook)
 ```
 
-The hook receives a `HumanInputRequest` (containing the prompt) and must return a `HumanMessage`. Both `def` and `async def` hooks are supported.
+The hook receives a `HumanInputRequest` (the prompt is in `event.content`) and returns either a `HumanMessage` or a plain `str` (the framework wraps a `str` via `HumanMessage.ensure_message`). Both `def` and `async def` hooks are supported.
 
 You can also register the hook after construction:
 
@@ -58,7 +58,7 @@ async def async_hitl_hook(event: HumanInputRequest) -> HumanMessage:
     return HumanMessage(content=answer)
 ```
 
-The decorator overrides any hook set in the constructor.
+The decorator overrides any hook set in the constructor — but if one was already set (e.g. via the constructor), applying `@agent.hitl_hook` emits a `RuntimeWarning` (`"You already set HITL hook, provided value overrides it"`). Set the hook in exactly one place to avoid the warning.
 
 The hook participates in dependency injection — `Context`, `Inject`, `Variable`, `Depends` work the same as in tools.
 
@@ -86,16 +86,16 @@ agent = Agent(
 )
 ```
 
-When the agent calls `delete_account`, the user sees:
+When the agent calls `delete_account`, the user sees (with the default `allow_always=True`):
 
 ```
-Agent tries to call tool:
+Agent wants to call the tool:
 `delete_account`, {"user_id": "abc-123"}
 Please approve or deny this request.
-Y/N?
+Y/N/Always?
 ```
 
-Typing **y** lets the tool run. Anything else denies it; the agent receives the denial message and can adjust.
+The answer is lowercased before matching. `y`, `yes`, or `1` approve this one call; `always` approves this call and all subsequent calls of the same tool in the same context (it sets a per-context bypass flag). Anything else denies it; the agent receives `denied_message` (default `"User denied the tool call request"`) and can adjust. The default `timeout` is **30** seconds. Set `allow_always=False` to drop the "Always" option (the prompt then shows just `Y/N?`).
 
 `approval_required()` calls `context.input()` under the hood, so it **also requires a `hitl_hook`** — without one you'll get a runtime error.
 
@@ -139,5 +139,5 @@ The approval middleware runs first (outermost). Once approved, the tool body exe
 - **Forgetting to handle the denial path** — `context.input()` returns whatever the hook returns. If you only branch on "yes", any other answer (including silence/default) lets the operation continue. Always validate.
 - **Sync `input()` in an async UI** — `input()` blocks the event loop. Use an async hook (`async def`) and an async input collector (web socket, message queue) for any non-CLI app.
 - **No timeout** — `context.input(prompt)` can wait forever. Pass `timeout=60.0` (seconds) for any production path.
-- **Decorator hook overrides constructor hook silently** — if you set both, the decorator wins. Pick one place.
+- **Decorator hook overrides constructor hook** — if you set both, the decorator wins and emits a `RuntimeWarning`. Pick one place.
 - **Expecting `HumanMessage` to flow into the conversation history automatically** — it does for the requesting tool's return value, but mid-run inputs collected via `ctx.input()` are not separate user turns. They live in the tool's scope.

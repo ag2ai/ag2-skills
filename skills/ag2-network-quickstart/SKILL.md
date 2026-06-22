@@ -1,6 +1,6 @@
 ---
 name: ag2-network-quickstart
-description: Build a multi-agent AG2 beta network — load this whenever two or more `Agent`s need to interact. The network is the standard multi-agent pattern in `autogen.beta`. Covers `Hub.open`, `LocalLink`, `HubClient.register`, `Passport`, `Resume`, channel lifecycle (INVITED → ACTIVE → CLOSING → CLOSED), the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form), the `Envelope` wire format, audience routing, `wait_for_channel_event`, WAL replay via `hub.read_wal`, and the five channel-close routes. Entry point — routes to `ag2-network-discussion` (N-party round-robin), `ag2-network-workflow` (declarative orchestration / GroupChat migration), `ag2-network-governance` (rules / expectations / audit), or `ag2-network-tools-and-views` (custom handlers / peer discovery) for deeper needs.
+description: Build a multi-agent AG2 beta network — load this whenever two or more `Agent`s need to interact. The network is the standard multi-agent pattern in `autogen.beta`. Covers `Hub.open`, `LocalLink`, `HubClient.register`, `Passport`, `Resume`, channel lifecycle (PENDING → ACTIVE → CLOSING → CLOSED), the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form), the `Envelope` wire format, audience routing, `wait_for_channel_event`, WAL replay via `hub.read_wal`, and the five channel-close routes. Entry point — routes to `ag2-network-discussion` (N-party round-robin), `ag2-network-workflow` (declarative orchestration / GroupChat migration), `ag2-network-governance` (rules / expectations / audit), or `ag2-network-tools-and-views` (custom handlers / peer discovery) for deeper needs.
 license: Apache-2.0
 ---
 
@@ -263,13 +263,13 @@ For the smallest case you can pass `Passport(name="alice")` and `Resume()` and c
 agent_client.open(type=..., target=...)
     │
     ▼
-INVITED ──┬─ all targets ack ──→ ACTIVE ──┬─ adapter terminates ──→ CLOSED
+PENDING ──┬─ all targets ack ──→ ACTIVE ──┬─ adapter terminates ──→ CLOSED
           │                                │
           └─ ack timeout ──→ CLOSED       └─ explicit channel.close() ──→ CLOSING ──→ CLOSED
-                  (expectation violation)         or TTL expired
+                  (invite_timeout)               or TTL expired
 ```
 
-The default `invite_ack_timeout` on `Hub.open(...)` is 30s; if any invited target doesn't ack within that window, the channel goes straight to CLOSED with reason `"expectation_violated:acks_within"`.
+The default `invite_ack_timeout` on `Hub.open(...)` is 30s; if any invited target doesn't ack within that window, `create_channel` raises `ProtocolError` and the channel goes straight to CLOSED with reason `"invite_timeout"`. (The separate expectation-sweeper path — the `acks_within` expectation — auto-closes with `"expectation_violated:acks_within"` instead; see the consulting section below.)
 
 ## Sending an envelope
 
@@ -277,7 +277,7 @@ The default `invite_ack_timeout` on `Hub.open(...)` is 30s; if any invited targe
 await channel.send(text, audience=[bob.agent_id])
 ```
 
-`audience` controls who sees the envelope (default: all participants). The hub stamps `Envelope.envelope_id`, `sender_id`, `at`, and writes it to the WAL.
+`audience` controls who sees the envelope (default: all participants). The hub stamps `Envelope.envelope_id`, `sender_id`, `created_at`, and writes it to the WAL.
 
 For custom event types, send raw envelopes via `agent_client.send_envelope(envelope)`. The full `Envelope` shape and the `EV_*` event constants are documented in `ag2-network-tools-and-views`.
 
@@ -348,10 +348,10 @@ The hub's WAL is the single source of truth for "what happened in this channel":
 ```python
 wal = await hub.read_wal(channel.channel_id)
 for env in wal:
-    print(env.at, env.event_type, env.sender_id, env.event_data)
+    print(env.created_at, env.event_type, env.sender_id, env.event_data)
 ```
 
-Every envelope is hub-stamped (`envelope_id`, `at`, `sender_id`, `audience`, `event_type`, `event_data`). The WAL is keyed by channel id; reading it works for any channel this process can see.
+Every envelope is hub-stamped (`envelope_id`, `created_at`, `sender_id`, `audience`, `event_type`, `event_data`). The WAL is keyed by channel id; reading it works for any channel this process can see.
 
 For the audit log (hub-level events: agent registered, channel created/closed, expectation violated), see `ag2-network-governance`.
 

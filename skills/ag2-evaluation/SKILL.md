@@ -82,16 +82,15 @@ judge = agent_judge(OpenAIConfig(model="gpt-4o"), criterion="Helpful and accurat
 
 ## CI — deterministic, no API key
 
-Swap the model for a `TestConfig` cassette (a canned reply per task) so CI is free and repeatable:
+Swap the model for a `TestConfig` cassette (a canned reply per task) so CI is free and repeatable. `model_config` is a `dict[task_id, ModelConfig]` — one cassette per task — and overrides the agent's own config for that task:
 
 ```python
 from autogen.beta.testing import TestConfig
 
-def build(*, config=None):                     # agent must be a FACTORY for per-task configs
-    return Agent("geographer", prompt="Answer with the capital city.", config=config)
+agent = Agent("geographer", prompt="Answer with the capital city.")   # an Agent instance, not a factory
 
 canned = {"france": TestConfig("Paris"), "japan": TestConfig("Tokyo")}
-result = await run_agent(suite, agent=build, scorers=scorers, model_config=canned, store_dir="./runs")
+result = await run_agent(suite, agent=agent, scorers=scorers, model_config=canned, store_dir="./runs")
 assert result.pass_rate("final_answer_matches") == 1.0      # the gate
 ```
 

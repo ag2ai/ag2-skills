@@ -1,0 +1,13 @@
+{
+  "$comment": "Source of truth for the upstream AG2 version these skills were verified against. To see what changed upstream since, diff the pinned commit: `git -C <ag2-checkout> diff ag2_commit..main -- autogen/beta` (see scripts/check_drift.sh).",
+  "framework": "ag2",
+  "scope": "autogen.beta",
+  "scope_note": "These skills document the AG2 Beta API (the `autogen.beta` namespace) ONLY. They do not cover the classic / stable `autogen` API.",
+  "ag2_version": "0.13.4",
+  "ag2_commit": "ab6285a1311c2fc5cc84c875f3e771252de0eaca",
+  "ag2_repo": "https://github.com/ag2ai/ag2",
+  "verified_against_branch": "main",
+  "verified_date": "2026-06-22",
+  "python_version": "3.13.7",
+  "verification_method": "Every SKILL.md was cross-checked against the autogen.beta source at the pinned commit; example code was executed against ag2==0.13.4."
+}

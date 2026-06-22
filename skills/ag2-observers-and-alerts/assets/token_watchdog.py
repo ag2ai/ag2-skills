@@ -20,7 +20,7 @@ from autogen.beta.annotations import Context
 from autogen.beta.config import GeminiConfig
 from autogen.beta.events import BaseEvent
 from autogen.beta.events.alert import ObserverAlert
-from autogen.beta.observer import BaseObserver, LoopDetector, TokenMonitor
+from autogen.beta.observers import BaseObserver, LoopDetector, TokenMonitor
 from autogen.beta.stream import MemoryStream
 from autogen.beta.watch import EventWatch
 
