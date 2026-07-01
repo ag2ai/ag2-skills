@@ -1,6 +1,6 @@
 """Token watchdog — observers and alerts.
 
-Mirrors website/docs/beta/code_examples/04_token_watchdog.mdx. Three observer
+Mirrors website/docs/user-guide/code_examples/04_token_watchdog.mdx. Three observer
 patterns running against a single Agent:
 
 1. TokenMonitor — built-in, tallies usage and warns above a threshold.
@@ -15,14 +15,14 @@ Run::
 
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.annotations import Context
-from autogen.beta.config import GeminiConfig
-from autogen.beta.events import BaseEvent
-from autogen.beta.events.alert import ObserverAlert
-from autogen.beta.observers import BaseObserver, LoopDetector, TokenMonitor
-from autogen.beta.stream import MemoryStream
-from autogen.beta.watch import EventWatch
+from ag2 import Agent
+from ag2.annotations import Context
+from ag2.config import GeminiConfig
+from ag2.events import BaseEvent
+from ag2.events.alert import ObserverAlert
+from ag2.observers import BaseObserver, LoopDetector, TokenMonitor
+from ag2.stream import MemoryStream
+from ag2.watch import EventWatch
 
 
 def section(title: str) -> None:

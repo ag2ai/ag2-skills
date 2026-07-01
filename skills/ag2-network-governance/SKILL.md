@@ -31,7 +31,7 @@ Load this skill when the user needs to:
 Three dataclasses describe an agent on the network. The tenant supplies most fields; the hub stamps the rest.
 
 ```python
-from autogen.beta.network import Passport, Resume, ResumeExample
+from ag2.network import Passport, Resume, ResumeExample
 
 passport = Passport(
     name="alice",                # required, unique within the hub
@@ -64,7 +64,7 @@ The `observed` field is the agent's track record. It grows automatically as the 
 Pass a `Rule` at registration to govern an agent's behaviour on the network:
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     Rule, AccessBlock, LimitsBlock, RateBlock, InboxBlock, ChannelTypeAccess,
 )
 
@@ -115,7 +115,7 @@ await hub.set_rule(alice.agent_id, new_rule)  # emits AUDIT_KIND_RULE_SET
 `LimitsBlock.channel_ttl_default` accepts a string parsed by `parse_duration`:
 
 ```python
-from autogen.beta.network import parse_duration
+from ag2.network import parse_duration
 
 parse_duration("30s")  # 30
 parse_duration("4h")   # 14400
@@ -142,7 +142,7 @@ The default is **`RuleBasedArbiter`** — it enforces the per-agent `Rule`: `acc
 Swap it to layer your own logic — JWT scopes, per-tenant quotas, federation routing — on top of (or instead of) the rule data. `BaseHubArbiter` returns `Allow()` for everything, so a subclass that overrides one gate would *allow* the rest — to keep rule enforcement, delegate to a `RuleBasedArbiter()` instance:
 
 ```python
-from autogen.beta.network import HubArbiter, BaseHubArbiter, RuleBasedArbiter, Allow, Deny
+from ag2.network import HubArbiter, BaseHubArbiter, RuleBasedArbiter, Allow, Deny
 
 class ScopedArbiter(BaseHubArbiter):
     def __init__(self, inner: HubArbiter) -> None:
@@ -165,9 +165,9 @@ hub.register_arbiter(ScopedArbiter(RuleBasedArbiter()))   # one active arbiter; 
 By default the hub uses `AuthRegistry.default()` — a `NoAuth`-only registry (scheme `"none"`) that accepts every claim, so every registration succeeds without credentials. The scheme is selected per-passport via `passport.auth.scheme` (an `AuthBlock` field, defaulting to `"none"`); the credentials live in `passport.auth.claim` (a `dict`). For production:
 
 ```python
-from autogen.beta.network import AuthAdapter, AuthRegistry, NoAuth, ApiKeyAuth, AuthError, Hub
-from autogen.beta.network import AuthBlock, Passport
-from autogen.beta.knowledge import MemoryKnowledgeStore
+from ag2.network import AuthAdapter, AuthRegistry, NoAuth, ApiKeyAuth, AuthError, Hub
+from ag2.network import AuthBlock, Passport
+from ag2.knowledge import MemoryKnowledgeStore
 
 import hmac
 from typing import Any
@@ -227,7 +227,7 @@ Every adapter ships defaults in its manifest. The expectation sweeper task evalu
 ### Violation handlers
 
 ```python
-from autogen.beta.network import Expectation
+from ag2.network import Expectation
 
 Expectation(name="acks_within", on_violation="auto_close", params={"seconds": 30})
 ```
@@ -262,8 +262,8 @@ channel = await alice.open(
 ### Custom evaluators
 
 ```python
-from autogen.beta.network import EV_TEXT, Expectation
-from autogen.beta.network import ExpectationContext, Violation
+from ag2.network import EV_TEXT, Expectation
+from ag2.network import ExpectationContext, Violation
 
 
 class TooManyMessagesEvaluator:
@@ -309,7 +309,7 @@ Each record is a plain dict with at minimum `kind` and `at` (ISO-Z timestamp); k
 ### Audit kinds
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     AUDIT_KIND_AGENT_REGISTERED,
     AUDIT_KIND_AGENT_UNREGISTERED,
     AUDIT_KIND_RESUME_SET,
@@ -374,7 +374,7 @@ The audit log is the *durable* record. For *live* reactions to hub state changes
 All methods are `async`; the hub awaits them sequentially in registration order, each wrapped in `try/except` — a buggy listener can't stall dispatch. Keep them fast (queue I/O onto your own task). Subclass `BaseHubListener` (every method is a `pass`) and override only what you need:
 
 ```python
-from autogen.beta.network import BaseHubListener
+from ag2.network import BaseHubListener
 
 class MetricsListener(BaseHubListener):
     async def on_envelope_posted(self, envelope, metadata):
@@ -455,8 +455,8 @@ The default handler auto-attaches a `TaskMirror` per turn, scoped to the active 
 You only attach `TaskMirror` manually if you've written a custom handler:
 
 ```python
-from autogen.beta.network import TaskMirror
-from autogen.beta.stream import MemoryStream
+from ag2.network import TaskMirror
+from ag2.stream import MemoryStream
 
 mirror = TaskMirror(
     hub_client=client._hub_client,
@@ -518,7 +518,7 @@ The hub stamps `Resume.last_updated` on every mutation, so you can detect stale 
 ## Quick reference — imports
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     # Identity
     Passport, Resume, ResumeExample, ObservedStat,
     # Rules

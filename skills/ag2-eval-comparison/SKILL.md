@@ -1,6 +1,6 @@
 ---
 name: ag2-eval-comparison
-description: Compare AG2 beta agents, models, or prompts to decide which is better. run_variants scores several named agents on one suite and ranks them on a leaderboard (Variants holds a mapping of named Agent instances plus an axis label). run_pairwise with pairwise_judge does head-to-head LLM comparison using a dual-order position swap (a win counts only if it survives the swap, else a tie), reporting win-rate with a Wilson 95% CI, wins, losses, ties, flips, and agreement (Cohen's kappa). human_pairwise collects a person's blinded vote inline, or via an exported manifest with export_pairwise_cases and human_labels. Use when the user wants to A/B test prompts or models, run a leaderboard, pick a winner, judge head-to-head, measure win-rate, or collect human preference labels. For running and grading a single agent, see ag2-evaluation.
+description: Compare AG2 agents, models, or prompts to decide which is better. run_variants scores several named agents on one suite and ranks them on a leaderboard (Variants holds a mapping of named Agent instances plus an axis label). run_pairwise with pairwise_judge does head-to-head LLM comparison using a dual-order position swap (a win counts only if it survives the swap, else a tie), reporting win-rate with a Wilson 95% CI, wins, losses, ties, flips, and agreement (Cohen's kappa). human_pairwise collects a person's blinded vote inline, or via an exported manifest with export_pairwise_cases and human_labels. Use when the user wants to A/B test prompts or models, run a leaderboard, pick a winner, judge head-to-head, measure win-rate, or collect human preference labels. For running and grading a single agent, see ag2-evaluation.
 license: Apache-2.0
 ---
 
@@ -26,10 +26,10 @@ pip install "ag2[openai,tracing]"
 `Variants` is a frozen dataclass holding a mapping of named **`Agent` instances** plus an `axis` label naming what you varied. Build each agent with the one thing that differs (config, prompt, tools, middleware, …), hold the rest fixed, score each, rank:
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig, GeminiConfig
-from autogen.beta.eval import Variants, run_variants
-from autogen.beta.eval.scorers import agent_judge
+from ag2 import Agent
+from ag2.config import OpenAIConfig, GeminiConfig
+from ag2.eval import Variants, run_variants
+from ag2.eval.scorers import agent_judge
 
 board = await run_variants(
     suite,
@@ -57,8 +57,8 @@ Vary whatever you like across the agents — set `axis` to label it (e.g. `"conf
 A comparator picks a winner PER task. `pairwise_judge` shows the pair in BOTH orders and counts a win only if it's consistent — else a tie (cancels position bias):
 
 ```python
-from autogen.beta.eval import run_pairwise
-from autogen.beta.eval.scorers import pairwise_judge
+from ag2.eval import run_pairwise
+from ag2.eval.scorers import pairwise_judge
 
 result = await run_pairwise(
     suite, variant_a=agent_v1, variant_b=agent_v2,
@@ -77,7 +77,7 @@ print(result.flips("quality"))          # int — count of cases where the two o
 Same unit, decided by a person. The pair is blinded and order-randomized; the default prints it and reads `1` / `2` / `tie`. Pass your own async `ask(task, response_1, response_2)` to collect a vote from a UI (returns `"1"`, `"2"`, or `"tie"`):
 
 ```python
-from autogen.beta.eval.scorers import human_pairwise
+from ag2.eval.scorers import human_pairwise
 
 async def ask(task, response_1, response_2) -> str:
     return await my_ui.compare(task.inputs["input"], response_1, response_2)   # "1" / "2" / "tie"
@@ -89,8 +89,8 @@ result = await run_pairwise(suite, variant_a=agent_v1, variant_b=agent_v2,
 At scale, export a blinded manifest, label it in any tool, import it. `evaluate_pairwise` is the grade-only twin of `run_pairwise` (pairs two existing trace sources by `task_id`):
 
 ```python
-from autogen.beta.eval import evaluate_pairwise, DirectoryTraceSource
-from autogen.beta.eval.scorers import export_pairwise_cases, human_labels
+from ag2.eval import evaluate_pairwise, DirectoryTraceSource
+from ag2.eval.scorers import export_pairwise_cases, human_labels
 
 a, b = DirectoryTraceSource("runs/champion"), DirectoryTraceSource("runs/challenger")
 await export_pairwise_cases(a, b, criteria=["more helpful"], out="labels.jsonl", suite=suite)   # blinded JSONL
@@ -109,5 +109,5 @@ The manifest hides which model is which; its `first_variant` field de-blinds it 
 
 ## Going deeper
 
-- `website/docs/beta/evaluation/` — `variants` (the `Variants` mapping + `axis`), `pairwise` (comparators, win-rate, blinded labeling)
+- `website/docs/user-guide/evaluation/` — `variants` (the `Variants` mapping + `axis`), `pairwise` (comparators, win-rate, blinded labeling)
 - `ag2-evaluation` — single-agent run/grade, scorers, CI, persistence

@@ -1,6 +1,6 @@
 ---
 name: ag2-observers-and-alerts
-description: Monitor an AG2 beta agent's stream — log events, detect repeated tool calls, track token spend, build trigger-driven observers, route observer alerts to the model, and halt on FATAL conditions. Covers `@observer(...)` (stateless), `BaseObserver` (stateful), built-ins (`TokenMonitor`, `LoopDetector`), `Watch` primitives (`EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`), `ObserverAlert` (`Severity.INFO/WARNING/CRITICAL/FATAL`), `AlertPolicy`, and `HaltEvent`. Use when the user wants observability, runtime safety guards, alerts, or batch/time-based reactive logic.
+description: Monitor an AG2 agent's stream — log events, detect repeated tool calls, track token spend, build trigger-driven observers, route observer alerts to the model, and halt on FATAL conditions. Covers `@observer(...)` (stateless), `BaseObserver` (stateful), built-ins (`TokenMonitor`, `LoopDetector`), `Watch` primitives (`EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`), `ObserverAlert` (`Severity.INFO/WARNING/CRITICAL/FATAL`), `AlertPolicy`, and `HaltEvent`. Use when the user wants observability, runtime safety guards, alerts, or batch/time-based reactive logic.
 license: Apache-2.0
 ---
 
@@ -26,9 +26,9 @@ Both are stream subscribers under the hood — registered on the agent rather th
 ## 60-second recipe — `@observer`
 
 ```python
-from autogen.beta import Agent, observer
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.events import ModelResponse
+from ag2 import Agent, observer
+from ag2.config import OpenAIConfig
+from ag2.events import ModelResponse
 
 @observer(ModelResponse)
 async def log_response(event: ModelResponse) -> None:
@@ -48,8 +48,8 @@ Observer callbacks support full dependency injection (`Context`, `Inject`, `Vari
 ## Built-in stateful observers
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.observers import LoopDetector, TokenMonitor
+from ag2 import Agent
+from ag2.observers import LoopDetector, TokenMonitor
 
 agent = Agent(
     "assistant",
@@ -69,11 +69,11 @@ agent = Agent(
 A `BaseObserver` pairs a `Watch` (when to fire) with a `process()` method (what to do):
 
 ```python
-from autogen.beta import Context
-from autogen.beta.observers import BaseObserver
-from autogen.beta.watch import CadenceWatch
-from autogen.beta.events import BaseEvent, ModelResponse
-from autogen.beta.events.alert import ObserverAlert, Severity
+from ag2 import Context
+from ag2.observers import BaseObserver
+from ag2.watch import CadenceWatch
+from ag2.events import BaseEvent, ModelResponse
+from ag2.events.alert import ObserverAlert, Severity
 
 class AvgCompletionObserver(BaseObserver):
     """Every N responses, emit an INFO alert with avg completion-token count."""
@@ -110,12 +110,12 @@ If `process()` returns an `ObserverAlert`, the base class emits it onto the stre
 | Any sub-watch fires | `AnyOf(w1, w2)` |
 | In order | `Sequence(w1, w2)` |
 
-All importable from `autogen.beta.watch`. Callback signature is uniform: `async def cb(events: list[BaseEvent], ctx: Context) -> None`. Time-driven watches pass `events=[]`.
+All importable from `ag2.watch`. Callback signature is uniform: `async def cb(events: list[BaseEvent], ctx: Context) -> None`. Time-driven watches pass `events=[]`.
 
 ## `ObserverAlert` — the alert type
 
 ```python
-from autogen.beta.events.alert import ObserverAlert, Severity
+from ag2.events.alert import ObserverAlert, Severity
 
 ObserverAlert(
     source="my-observer",
@@ -127,7 +127,7 @@ ObserverAlert(
 **Important:** `ObserverAlert` is on the stream and persisted in history, but the default provider mappers **do not render it back to the LLM**. To make the agent see alerts, add `AlertPolicy()` to `assembly=[...]`:
 
 ```python
-from autogen.beta.policies import AlertPolicy
+from ag2.policies import AlertPolicy
 agent = Agent("assistant", config=config, assembly=[AlertPolicy()])
 ```
 
@@ -141,12 +141,12 @@ agent = Agent("assistant", config=config, assembly=[AlertPolicy()])
 When `assembly=[...]` is non-empty, the harness automatically wires `_HaltCheckMiddleware` which sees the `HaltEvent` and short-circuits the next LLM call with a synthetic `HALTED: ...` response.
 
 ```python
-from autogen.beta import Context
-from autogen.beta.observers import BaseObserver
-from autogen.beta.events import BaseEvent, ToolCallEvent
-from autogen.beta.events.alert import HaltEvent, ObserverAlert, Severity
-from autogen.beta.policies import AlertPolicy
-from autogen.beta.watch import EventWatch
+from ag2 import Context
+from ag2.observers import BaseObserver
+from ag2.events import BaseEvent, ToolCallEvent
+from ag2.events.alert import HaltEvent, ObserverAlert, Severity
+from ag2.policies import AlertPolicy
+from ag2.watch import EventWatch
 
 class PathGuardian(BaseObserver):
     def __init__(self) -> None:
@@ -179,8 +179,8 @@ The first dangerous tool call triggers FATAL → halt; the agent's next ask is s
 ## Subscribing to alerts and halts from outside
 
 ```python
-from autogen.beta import MemoryStream
-from autogen.beta.events.alert import HaltEvent, ObserverAlert
+from ag2 import MemoryStream
+from ag2.events.alert import HaltEvent, ObserverAlert
 
 stream = MemoryStream()
 stream.where(ObserverAlert).subscribe(lambda e: print(f"[{e.severity}] {e.source}: {e.message}"))
@@ -204,10 +204,10 @@ await agent.ask("...", stream=stream)
 - `assets/token_watchdog.py` — three observers (`TokenMonitor`, `LoopDetector`, custom `AlertConsole`) on one agent. Mirrors `code_examples/04`.
 - `assets/safety_guard.py` — `PathGuardian` → FATAL → `AlertPolicy` → `HaltEvent` → short-circuit. Mirrors `code_examples/08`.
 - Source docs:
-  - `website/docs/beta/advanced/observers.mdx` — `@observer`, `BaseObserver`, registration, built-ins, `ObserverAlert`.
-  - `website/docs/beta/advanced/watches.mdx` — every Watch primitive, composition rules.
-  - `website/docs/beta/advanced/stream.mdx` — Stream API, `where`, `subscribe`, interrupters, `RedisStream`.
-  - `website/docs/beta/advanced/assembly.mdx` — `AlertPolicy` ordering and dedup.
+  - `website/docs/user-guide/advanced/observers.mdx` — `@observer`, `BaseObserver`, registration, built-ins, `ObserverAlert`.
+  - `website/docs/user-guide/advanced/watches.mdx` — every Watch primitive, composition rules.
+  - `website/docs/user-guide/advanced/stream.mdx` — Stream API, `where`, `subscribe`, interrupters, `RedisStream`.
+  - `website/docs/user-guide/advanced/assembly.mdx` — `AlertPolicy` ordering and dedup.
 
 ## Common pitfalls
 

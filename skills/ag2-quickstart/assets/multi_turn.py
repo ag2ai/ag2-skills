@@ -1,6 +1,6 @@
 """Travel planner — multi-turn conversation via reply.ask() chaining.
 
-Mirrors website/docs/beta/code_examples/03_travel_planner.mdx. Chained
+Mirrors website/docs/user-guide/code_examples/03_travel_planner.mdx. Chained
 ``reply.ask()`` builds on the same conversation history. The planner remembers
 constraints from earlier turns without the caller re-supplying context.
 
@@ -13,8 +13,8 @@ import asyncio
 
 from dotenv import load_dotenv
 
-from autogen.beta import Agent
-from autogen.beta.config import GeminiConfig
+from ag2 import Agent
+from ag2.config import GeminiConfig
 
 # Load API keys from a .env file at the project root (GEMINI_API_KEY here).
 # Swap GeminiConfig for OpenAIConfig / AnthropicConfig if that's the key you have.

@@ -1,6 +1,6 @@
 """Long-doc chat — composing assembly policies.
 
-Mirrors website/docs/beta/code_examples/07_long_doc_chat.mdx. Three policies
+Mirrors website/docs/user-guide/code_examples/07_long_doc_chat.mdx. Three policies
 compose in order:
 
 1. ConversationPolicy — drops every event that isn't conversation/tool traffic.
@@ -17,17 +17,17 @@ Run::
 
 import asyncio
 
-from autogen.beta import Agent, KnowledgeConfig
-from autogen.beta.compact import CompactTrigger, TailWindowCompact
-from autogen.beta.config import GeminiConfig
-from autogen.beta.events.lifecycle import CompactionCompleted
-from autogen.beta.knowledge import MemoryKnowledgeStore
-from autogen.beta.policies import (
+from ag2 import Agent, KnowledgeConfig
+from ag2.compact import CompactTrigger, TailWindowCompact
+from ag2.config import GeminiConfig
+from ag2.events.lifecycle import CompactionCompleted
+from ag2.knowledge import MemoryKnowledgeStore
+from ag2.policies import (
     ConversationPolicy,
     SlidingWindowPolicy,
     TokenBudgetPolicy,
 )
-from autogen.beta.stream import MemoryStream
+from ag2.stream import MemoryStream
 
 
 def section(title: str) -> None:

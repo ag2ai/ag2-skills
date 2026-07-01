@@ -1,12 +1,12 @@
 ---
 name: ag2-mcp
-description: Host an MCP server that exposes an AG2 beta `Agent` (plus prompts and resources) to MCP clients like Claude Desktop, Cursor, or the MCP Inspector. Wrap the agent with `MCPServer(agent)` — it surfaces `Agent.ask()` as a single conversational tool and serves over stdio (`run_stdio()`) or streamable HTTP (it is itself an ASGI app for uvicorn). Covers `MCPServer`, `SessionConfig` (multi-turn history), `Prompt`/`PromptArgument`/`PromptMessage`, `Resource`/`ResourceTemplate`, `AskContext`/`ContextProvider` (per-request injection), `build_ask_tool`, OAuth2 `security=`, and in-process `testing.connect`/`testing.serve` helpers. Use when you want OTHER MCP clients to call YOUR agent. This is the SERVER side — for CONSUMING external MCP servers from an agent (client side) see `ag2-use-builtin-tools` (`MCPServerTool`).
+description: Host an MCP server that exposes an AG2 `Agent` (plus prompts and resources) to MCP clients like Claude Desktop, Cursor, or the MCP Inspector. Wrap the agent with `MCPServer(agent)` — it surfaces `Agent.ask()` as a single conversational tool and serves over stdio (`run_stdio()`) or streamable HTTP (it is itself an ASGI app for uvicorn). Covers `MCPServer`, `SessionConfig` (multi-turn history), `Prompt`/`PromptArgument`/`PromptMessage`, `Resource`/`ResourceTemplate`, `AskContext`/`ContextProvider` (per-request injection), `build_ask_tool`, OAuth2 `security=`, and in-process `testing.connect`/`testing.serve` helpers. Use when you want OTHER MCP clients to call YOUR agent. This is the SERVER side — for CONSUMING external MCP servers from an agent (client side) see `ag2-use-builtin-tools` (`MCPServerTool`).
 license: Apache-2.0
 ---
 
 # Serving an AG2 agent as an MCP server
 
-`autogen.beta.mcp.MCPServer` turns an AG2 beta `Agent` into a Model Context
+`ag2.mcp.MCPServer` turns an AG2 `Agent` into a Model Context
 Protocol **server**: MCP clients (Claude Desktop, Cursor, the MCP Inspector, or
 any MCP-speaking app) connect and call your agent as a tool. It can also expose
 **prompts** and **resources** alongside the agent.
@@ -17,7 +17,7 @@ There are two opposite directions, and this skill is only one of them.
 
 | Direction | You want… | Use |
 |---|---|---|
-| **Server (this skill)** | other MCP clients to call **your** AG2 agent | `autogen.beta.mcp.MCPServer` |
+| **Server (this skill)** | other MCP clients to call **your** AG2 agent | `ag2.mcp.MCPServer` |
 | **Client** | your AG2 agent to call an **external** MCP server's tools | `MCPServerTool` / MCP toolkits — see **`ag2-use-builtin-tools`** |
 
 If the user says "let Claude Desktop talk to my agent", "publish my agent over
@@ -38,7 +38,7 @@ pip install "ag2[mcp]"
 ```
 
 > Required. Run this install before delivering the code. Without the `mcp`
-> extra, `from autogen.beta.mcp import MCPServer` resolves to a stub that raises
+> extra, `from ag2.mcp import MCPServer` resolves to a stub that raises
 > a "missing optional dependency" error on use.
 
 ## 60-second recipe — serve an agent over stdio
@@ -49,9 +49,9 @@ expect. The server reads/writes MCP frames over stdin/stdout.
 ```python title="serve_stdio.py"
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.mcp import MCPServer
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.mcp import MCPServer
 
 agent = Agent(
     name="assistant",
@@ -98,9 +98,9 @@ standalone run just works.
 ```python title="serve_http.py"
 import uvicorn
 
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.mcp import MCPServer
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.mcp import MCPServer
 
 agent = Agent(name="assistant", prompt="You help users.", config=OpenAIConfig(model="gpt-4o-mini"))
 
@@ -143,7 +143,7 @@ either a plain `str` (becomes one `user` message) or a list of `PromptMessage`.
 Renderers may be sync or async.
 
 ```python
-from autogen.beta.mcp import MCPServer, Prompt, PromptArgument, PromptMessage
+from ag2.mcp import MCPServer, Prompt, PromptArgument, PromptMessage
 
 def render_review(args: dict[str, str]) -> list[PromptMessage]:
     return [
@@ -179,7 +179,7 @@ plus `resources/templates/list` for templates). `read` returns `str` (text) or
 
 ```python
 from pathlib import Path
-from autogen.beta.mcp import MCPServer, Resource, ResourceTemplate
+from ag2.mcp import MCPServer, Resource, ResourceTemplate
 
 server = MCPServer(
     agent,
@@ -217,7 +217,7 @@ Tune it with `SessionConfig`, or disable with `sessions=False` for fully
 stateless calls.
 
 ```python
-from autogen.beta.mcp import MCPServer, SessionConfig
+from ag2.mcp import MCPServer, SessionConfig
 
 server = MCPServer(
     agent,
@@ -232,7 +232,7 @@ server = MCPServer(
 stateless = MCPServer(agent, sessions=False)
 ```
 
-`storage` accepts any `autogen.beta.history.Storage` (e.g. a Redis-backed store)
+`storage` accepts any `ag2.history.Storage` (e.g. a Redis-backed store)
 for cross-replica continuity. Note: a `stateless=True` **HTTP transport** issues
 no session id, so it stays stateless regardless of `sessions=`.
 
@@ -245,9 +245,9 @@ aren't advertised — those replies flow back as plain text.
 
 ```python
 from pydantic import BaseModel
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.mcp import MCPServer
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.mcp import MCPServer
 
 class Weather(BaseModel):
     city: str
@@ -269,7 +269,7 @@ tools, or prompt — context the stateless executor otherwise omits.
 
 ```python
 from typing import Any
-from autogen.beta.mcp import AskContext, ContextProvider, MCPServer
+from ag2.mcp import AskContext, ContextProvider, MCPServer
 
 async def provide(token: Any) -> AskContext:
     # Resolve the caller from `token`, then scope the turn to them.
@@ -296,8 +296,8 @@ via RFC 9728 Protected Resource Metadata at
 tokens stays with your external authorization server.
 
 ```python
-from autogen.beta.mcp import MCPServer
-from autogen.beta.mcp.security import oauth2_scheme, require
+from ag2.mcp import MCPServer
+from ag2.mcp.security import oauth2_scheme, require
 
 security = require(
     oauth2_scheme(url="https://auth.example.com"),  # absolute http(s) issuer URL
@@ -323,19 +323,19 @@ app = MCPServer(agent, path="/mcp", security=security)
 
 ## Testing in-process — no sockets, no subprocess
 
-`autogen.beta.mcp.testing` stands the server up entirely in memory. Use
+`ag2.mcp.testing` stands the server up entirely in memory. Use
 `connect()` for a low-level `ClientSession` (list/call tools, prompts,
 resources) and `serve()` for an `httpx.AsyncClient` over the ASGI transport
 (exercise the HTTP path, status codes, metadata). Pair with `TestConfig` from
-`autogen.beta.testing` to mock the LLM — no API keys needed.
+`ag2.testing` to mock the LLM — no API keys needed.
 
 ```python title="test_server.py"
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.testing import TestConfig
-from autogen.beta.mcp import MCPServer, Resource
-from autogen.beta.mcp import testing
+from ag2 import Agent
+from ag2.testing import TestConfig
+from ag2.mcp import MCPServer, Resource
+from ag2.mcp import testing
 
 async def main() -> None:
     agent = Agent(name="assistant", prompt="p", config=TestConfig("Hello from the agent!"))
@@ -390,7 +390,7 @@ you observe streamed progress / log notifications.
 
 ## Public API reference
 
-All importable from `autogen.beta.mcp`:
+All importable from `ag2.mcp`:
 
 | Symbol | Kind | Purpose |
 |---|---|---|
@@ -405,8 +405,8 @@ All importable from `autogen.beta.mcp`:
 | `ContextProvider` | type alias | `async (AccessToken | None) -> AskContext`. |
 | `build_ask_tool` | function | Build the single conversational `MCPTool` standalone (advanced/tests). |
 
-From `autogen.beta.mcp.security`: `oauth2_scheme`, `require`, `Scheme`,
-`Requirement`. From `autogen.beta.mcp.testing`: `connect`, `serve`.
+From `ag2.mcp.security`: `oauth2_scheme`, `require`, `Scheme`,
+`Requirement`. From `ag2.mcp.testing`: `connect`, `serve`.
 
 ## Common pitfalls
 
@@ -420,7 +420,7 @@ From `autogen.beta.mcp.security`: `oauth2_scheme`, `require`, `Scheme`,
 
 ## Going deeper
 
-- Source: `autogen/beta/mcp/{server,sessions,prompts,resources,executor,info,security,testing}.py`
+- Source: `ag2/mcp/{server,sessions,prompts,resources,executor,info,security,testing}.py`
 - Runnable reference covering every sample above: `references/test_server.py` (run with `python references/test_server.py`, no API keys needed)
 - MCP spec: https://modelcontextprotocol.io
 - Client side (consuming MCP servers from an agent): skill `ag2-use-builtin-tools`

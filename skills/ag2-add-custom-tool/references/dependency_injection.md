@@ -1,4 +1,4 @@
-# Dependency injection in AG2 beta tools
+# Dependency injection in AG2 tools
 
 Four annotations let a tool pull values from execution context without exposing them to the LLM. They use the same `fast_depends` machinery as FastAPI.
 
@@ -16,7 +16,7 @@ Resolution annotations do **not** appear in the LLM-facing tool schema.
 ## `Context` — direct access
 
 ```python
-from autogen.beta import Context, tool
+from ag2 import Context, tool
 
 @tool
 def query(query: str, context: Context) -> str:
@@ -31,7 +31,7 @@ def query(query: str, context: Context) -> str:
 
 ```python
 from typing import Annotated
-from autogen.beta import Inject, tool
+from ag2 import Inject, tool
 
 @tool
 def fetch(
@@ -60,7 +60,7 @@ client: Annotated[object, Inject(default_factory=DefaultClient)]
 
 ```python
 from typing import Annotated
-from autogen.beta import Variable, tool
+from ag2 import Variable, tool
 
 @tool
 def fetch_user(
@@ -92,7 +92,7 @@ For something that must be evaluated at execution time (auth checks, short-lived
 
 ```python
 from typing import Annotated
-from autogen.beta import Depends, tool
+from ag2 import Depends, tool
 
 def verify_permissions(user_id: int) -> None:
     if not _allowed(user_id):

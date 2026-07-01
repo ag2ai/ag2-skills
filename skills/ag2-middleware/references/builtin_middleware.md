@@ -1,11 +1,11 @@
 # Built-in middleware reference
 
-All importable from `autogen.beta.middleware` (and `autogen.beta.middleware.builtin` for `TelemetryMiddleware`).
+All importable from `ag2.middleware` (and `ag2.middleware.builtin` for `TelemetryMiddleware`).
 
 ## `LoggingMiddleware`
 
 ```python
-from autogen.beta.middleware import LoggingMiddleware
+from ag2.middleware import LoggingMiddleware
 
 agent = Agent(..., middleware=[LoggingMiddleware()])
 ```
@@ -22,7 +22,7 @@ No constructor args.
 ## `RetryMiddleware`
 
 ```python
-from autogen.beta.middleware import RetryMiddleware
+from ag2.middleware import RetryMiddleware
 
 agent = Agent(..., middleware=[RetryMiddleware(max_retries=2)])
 ```
@@ -38,7 +38,7 @@ Use for transient provider failures, network blips, occasional rate-limit respon
 ## `HistoryLimiter`
 
 ```python
-from autogen.beta.middleware import HistoryLimiter
+from ag2.middleware import HistoryLimiter
 
 agent = Agent(..., middleware=[HistoryLimiter(max_events=100)])
 ```
@@ -50,7 +50,7 @@ Use when you want a simple, deterministic, **count-based** cap on context. For r
 ## `TokenLimiter`
 
 ```python
-from autogen.beta.middleware import TokenLimiter
+from ag2.middleware import TokenLimiter
 
 agent = Agent(..., middleware=[TokenLimiter(max_tokens=1000, chars_per_token=4)])
 ```
@@ -64,7 +64,7 @@ Use as a **safety net** alongside other history shaping, not as an exact meter. 
 OpenTelemetry instrumentation following the GenAI semantic conventions.
 
 ```python
-from autogen.beta.middleware.builtin import TelemetryMiddleware
+from ag2.middleware.builtin import TelemetryMiddleware
 
 agent = Agent(
     "assistant",

@@ -1,6 +1,6 @@
 """Research squad — parallel subtasks and sibling delegation.
 
-Mirrors website/docs/beta/code_examples/05_research_squad.mdx. Two patterns
+Mirrors website/docs/user-guide/code_examples/05_research_squad.mdx. Two patterns
 for multi-Agent orchestration:
 
 1. **Opt-in subtask tools.** Pass tasks=TaskConfig(...) and the Agent gains
@@ -21,11 +21,11 @@ Run::
 import asyncio
 import time
 
-from autogen.beta import Agent
-from autogen.beta.agent import TaskConfig
-from autogen.beta.config import GeminiConfig
-from autogen.beta.events import TaskCompleted, TaskStarted
-from autogen.beta.stream import MemoryStream
+from ag2 import Agent
+from ag2.agent import TaskConfig
+from ag2.config import GeminiConfig
+from ag2.events import TaskCompleted, TaskStarted
+from ag2.stream import MemoryStream
 
 
 def section(title: str) -> None:

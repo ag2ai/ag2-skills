@@ -58,10 +58,10 @@ The examples below pass `attach_plugin=False` for compactness; drop it if your p
 ```python
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.config import AnthropicConfig
-from autogen.beta.knowledge import MemoryKnowledgeStore
-from autogen.beta.network import (
+from ag2 import Agent
+from ag2.config import AnthropicConfig
+from ag2.knowledge import MemoryKnowledgeStore
+from ag2.network import (
     EV_CHANNEL_CLOSED,
     EV_TEXT,
     ORDERING_ROUND_ROBIN,
@@ -136,7 +136,7 @@ When bob's reply lands, the same fan-out repeats. Now `expected_next_speaker = c
 If you write a **custom handler** for a discussion channel, mirror this pattern — and **delegate non-text envelopes to `default_handler`** so you keep the auto-ack of `EV_CHANNEL_INVITE` (otherwise the channel sits in `PENDING` until `invite_ack_timeout` and the hub closes it on you):
 
 ```python
-from autogen.beta.network import Envelope, EV_TEXT, default_handler
+from ag2.network import Envelope, EV_TEXT, default_handler
 
 
 async def my_handler(envelope: Envelope) -> None:
@@ -179,7 +179,7 @@ Protocol envelopes (`EV_CHANNEL_*`, `ag2.task.*`) bypass the turn check — they
 Today only `ORDERING_ROUND_ROBIN` ships:
 
 ```python
-from autogen.beta.network import ORDERING_ROUND_ROBIN
+from ag2.network import ORDERING_ROUND_ROBIN
 
 channel = await alice.open(
     type="discussion",
@@ -217,7 +217,7 @@ The reason flows on `EV_CHANNEL_CLOSED.event_data["reason"]` — pick something 
 Same pattern as the other adapters — inject the active `Channel`, call `close()`:
 
 ```python
-from autogen.beta.network.client.inject import ChannelInject
+from ag2.network.client.inject import ChannelInject
 
 
 async def end_discussion(reason: str, channel: ChannelInject) -> str:
@@ -249,7 +249,7 @@ Discussion deliberately *never* auto-closes from expectations — a slow speaker
 ## Quick reference — imports
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     DISCUSSION_TYPE,           # = "discussion"
     ORDERING_ROUND_ROBIN,      # = "round_robin"
     DiscussionAdapter,         # the adapter class itself (rarely instantiated directly)

@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents (Claude Code, Cursor, Copilot, e
 
 ## Repository Overview
 
-A collection of skills for working with [AG2](https://github.com/ag2ai/ag2) — an async, protocol-driven Python agent framework (`autogen.beta`). Skills are packaged instructions and optional helper scripts that extend an agent's capabilities.
+A collection of skills for working with [AG2](https://github.com/ag2ai/ag2) — an async, protocol-driven Python agent framework (`ag2`). Skills are packaged instructions and optional helper scripts that extend an agent's capabilities.
 
 Skills follow the [Agent Skills](https://agentskills.io/) format: a `SKILL.md` with YAML frontmatter, plus optional `scripts/` and `references/` directories.
 
@@ -50,7 +50,7 @@ license: Apache-2.0
 
 ## Reference
 
-{Link to any files in `references/` or upstream AG2 docs (`website/docs/beta/...`).}
+{Link to any files in `references/` or upstream AG2 docs (`website/docs/user-guide/...`).}
 ```
 
 ### Frontmatter limits (per the [Agent Skills spec](https://agentskills.io/specification))

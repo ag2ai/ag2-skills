@@ -66,7 +66,7 @@ Generated images surface on `reply.files: list[BinaryResult]`.
 Newer Anthropic tool revisions support dynamic filtering (the model writes code to filter results before they reach context) but require Opus 4.6 / Sonnet 4.6.
 
 ```python
-from autogen.beta.tools import WebFetchTool, WebSearchTool
+from ag2.tools import WebFetchTool, WebSearchTool
 
 tools = [
     WebSearchTool(version="web_search_20260209"),  # default: web_search_20250305
@@ -110,7 +110,7 @@ All parameters accept `Variable(...)` for deferred resolution.
 
 ### `ExaToolkit`
 
-Import from `autogen.beta.extensions.tools.search` (beta extension, not `autogen.beta.tools`).
+Import from `ag2.extensions.tools.search` (extension, not `ag2.tools`).
 
 | Tool factory | Description |
 |---|---|
@@ -149,8 +149,8 @@ TavilySearchTool(
 Discovers and runs skills following the [agentskills.io](https://agentskills.io) convention. By default reads from `.agents/skills/` in the current working directory.
 
 ```python
-from autogen.beta.tools import SkillsToolkit
-from autogen.beta.tools.skills import LocalRuntime
+from ag2.tools import SkillsToolkit
+from ag2.tools.skills import LocalRuntime
 
 skills = SkillsToolkit()                              # uses .agents/skills/
 skills = SkillsToolkit(runtime="./my-skills")         # custom dir
@@ -166,6 +166,6 @@ Three-step progressive disclosure: `list_skills` (catalog) → `load_skill` (ful
 | Tool | `pip install` |
 |---|---|
 | `DuckDuckSearchTool` | `ag2[ddgs]` |
-| `ExaToolkit` | `"exa-py>=2.12.1,<3"` (no `ag2` extra — beta extension) |
+| `ExaToolkit` | `"exa-py>=2.12.1,<3"` (no `ag2` extra — extension) |
 | `TavilySearchTool` | `ag2[tavily]` |
 | Provider-native tools | the provider's own extra (`ag2[anthropic]`, `ag2[openai]`, `ag2[gemini]`) |

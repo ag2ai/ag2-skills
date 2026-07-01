@@ -1,6 +1,6 @@
 ---
 name: ag2-evaluation
-description: Evaluate, test, and track an AG2 beta Agent offline. Build a Suite of tasks, run the agent with run_agent, and grade answers with prebuilt scorers (final_answer_matches, tool_called, no_tool_errors, token_budget) or a custom @scorer — including the agent_judge LLM judge. Read the RunResult scorecard (pass_rate, score_stats, value_counts), gate it in CI with deterministic TestConfig cassettes, persist to store_dir and diff runs to catch regressions, and grade existing traces with evaluate_traces. Use when the user wants to evaluate, test, grade, or benchmark an agent, build a CI or regression gate, or score correctness, tool use, cost, or quality. To compare builds head-to-head or on a leaderboard, see ag2-eval-comparison.
+description: Evaluate, test, and track an AG2 Agent offline. Build a Suite of tasks, run the agent with run_agent, and grade answers with prebuilt scorers (final_answer_matches, tool_called, no_tool_errors, token_budget) or a custom @scorer — including the agent_judge LLM judge. Read the RunResult scorecard (pass_rate, score_stats, value_counts), gate it in CI with deterministic TestConfig cassettes, persist to store_dir and diff runs to catch regressions, and grade existing traces with evaluate_traces. Use when the user wants to evaluate, test, grade, or benchmark an agent, build a CI or regression gate, or score correctness, tool use, cost, or quality. To compare builds head-to-head or on a leaderboard, see ag2-eval-comparison.
 license: Apache-2.0
 ---
 
@@ -8,7 +8,7 @@ license: Apache-2.0
 
 ## When to use
 
-- Evaluate / test / benchmark an AG2 beta `Agent`, or build a regression / CI gate
+- Evaluate / test / benchmark an AG2 `Agent`, or build a regression / CI gate
 - Grade answers for correctness, tool use, cost, or subjective quality
 - Track a metric across versions (did this change help or regress?)
 
@@ -26,10 +26,10 @@ pip install "ag2[openai,tracing]"
 
 ```python
 import asyncio
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.eval import Suite, run_agent
-from autogen.beta.eval.scorers import final_answer_matches
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.eval import Suite, run_agent
+from ag2.eval.scorers import final_answer_matches
 
 suite = Suite.from_list([
     {"task_id": "france", "inputs": {"input": "Capital of France?"}, "reference_outputs": {"answer": "Paris"}},
@@ -61,12 +61,12 @@ A scorer asks ONE question. Its RETURN TYPE picks the aggregation:
 | `int` / `float` | mean / p50 / p95 | `result.score_stats(key)` |
 | `str` | value counts | `result.value_counts(key)` |
 
-Prebuilt (`autogen.beta.eval.scorers`): `final_answer_matches(field=, matcher="contains"|"casefold"|"exact")`, `tool_called(name)`, `no_tool_errors()`, `token_budget(n)`, `failure_attribution(...)`, `agent_judge(...)`.
+Prebuilt (`ag2.eval.scorers`): `final_answer_matches(field=, matcher="contains"|"casefold"|"exact")`, `tool_called(name)`, `no_tool_errors()`, `token_budget(n)`, `failure_attribution(...)`, `agent_judge(...)`.
 
 Custom — decorate a function that declares what it needs by name (`outputs`, `trace`, `reference_outputs`, `inputs`, `task`):
 
 ```python
-from autogen.beta.eval import scorer
+from ag2.eval import scorer
 
 @scorer
 def answered_briefly(outputs) -> bool:
@@ -76,7 +76,7 @@ def answered_briefly(outputs) -> bool:
 `agent_judge` grades quality you can't check with `==` (use a different model than the agent under test):
 
 ```python
-from autogen.beta.eval.scorers import agent_judge
+from ag2.eval.scorers import agent_judge
 judge = agent_judge(OpenAIConfig(model="gpt-4o"), criterion="Helpful and accurate.", key="quality")
 ```
 
@@ -85,7 +85,7 @@ judge = agent_judge(OpenAIConfig(model="gpt-4o"), criterion="Helpful and accurat
 Swap the model for a `TestConfig` cassette (a canned reply per task) so CI is free and repeatable. `model_config` is a `dict[task_id, ModelConfig]` — one cassette per task — and overrides the agent's own config for that task:
 
 ```python
-from autogen.beta.testing import TestConfig
+from ag2.testing import TestConfig
 
 agent = Agent("geographer", prompt="Answer with the capital city.")   # an Agent instance, not a factory
 
@@ -99,7 +99,7 @@ assert result.pass_rate("final_answer_matches") == 1.0      # the gate
 `store_dir=` writes one JSON per run. Reload a past run and diff for regressions; or grade traces you already have (e.g. production telemetry) without re-running the agent:
 
 ```python
-from autogen.beta.eval import load_run, evaluate_traces, DirectoryTraceSource
+from ag2.eval import load_run, evaluate_traces, DirectoryTraceSource
 
 assert not result.diff(load_run("./runs/<run_id>.json")).regressions   # scorers that flipped pass -> fail
 graded = await evaluate_traces(DirectoryTraceSource("./traces"), scorers=scorers, store_dir="./runs")
@@ -113,5 +113,5 @@ graded = await evaluate_traces(DirectoryTraceSource("./traces"), scorers=scorers
 
 ## Going deeper
 
-- `website/docs/beta/evaluation/` — `getting-started`, `scorers` (catalog + custom + return-type rules), `runs`, `persistence`
+- `website/docs/user-guide/evaluation/` — `getting-started`, `scorers` (catalog + custom + return-type rules), `runs`, `persistence`
 - `ag2-eval-comparison` — leaderboard (`run_variants`) + head-to-head (`run_pairwise`)

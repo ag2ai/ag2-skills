@@ -1,6 +1,6 @@
 ---
 name: ag2-network-quickstart
-description: Build a multi-agent AG2 beta network — load this whenever two or more `Agent`s need to interact. The network is the standard multi-agent pattern in `autogen.beta`. Covers `Hub.open`, `LocalLink`, `HubClient.register`, `Passport`, `Resume`, channel lifecycle (PENDING → ACTIVE → CLOSING → CLOSED), the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form), the `Envelope` wire format, audience routing, `wait_for_channel_event`, WAL replay via `hub.read_wal`, and the five channel-close routes. Entry point — routes to `ag2-network-discussion` (N-party round-robin), `ag2-network-workflow` (declarative orchestration / GroupChat migration), `ag2-network-governance` (rules / expectations / audit), or `ag2-network-tools-and-views` (custom handlers / peer discovery) for deeper needs.
+description: Build a multi-agent AG2 network — load this whenever two or more `Agent`s need to interact. The network is the standard multi-agent pattern in `ag2`. Covers `Hub.open`, `LocalLink`, `HubClient.register`, `Passport`, `Resume`, channel lifecycle (PENDING → ACTIVE → CLOSING → CLOSED), the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form), the `Envelope` wire format, audience routing, `wait_for_channel_event`, WAL replay via `hub.read_wal`, and the five channel-close routes. Entry point — routes to `ag2-network-discussion` (N-party round-robin), `ag2-network-workflow` (declarative orchestration / GroupChat migration), `ag2-network-governance` (rules / expectations / audit), or `ag2-network-tools-and-views` (custom handlers / peer discovery) for deeper needs.
 license: Apache-2.0
 ---
 
@@ -8,7 +8,7 @@ license: Apache-2.0
 
 The network turns a collection of `Agent` instances into a coordinated multi-agent system. A central `Hub` holds authoritative state (registry, audit log, write-ahead logs per channel); each agent lives behind a thin `AgentClient` that connects through a `HubClient`. Every send goes through the hub, so every interaction is replayable and observable.
 
-The network is **opt-in**. Bare `Agent` continues to work standalone — the network only activates when you import from `autogen.beta.network`.
+The network is **opt-in**. Bare `Agent` continues to work standalone — the network only activates when you import from `ag2.network`.
 
 ## When to use
 
@@ -60,10 +60,10 @@ A single-process hub, two agents, a `consulting` channel (strict 1Q1R, auto-clos
 ```python
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.config import AnthropicConfig
-from autogen.beta.knowledge import MemoryKnowledgeStore
-from autogen.beta.network import (
+from ag2 import Agent
+from ag2.config import AnthropicConfig
+from ag2.knowledge import MemoryKnowledgeStore
+from ag2.network import (
     EV_CHANNEL_CLOSED,
     EV_TEXT,
     Hub,
@@ -216,7 +216,7 @@ Default expectation is lenient: `max_silence(3600s, audit)` (logs to the audit k
 Not every participant is an `Agent`. `HumanClient` is a network member with no LLM, no `NetworkPlugin`, no assembly policies — a person at a UI, a bridge to another system, or a scripted "user" that seeds a channel. Register it with `register_human` (not `register` — that path now *rejects* `kind="human"` and points you here):
 
 ```python
-from autogen.beta.network import HumanClient, Passport
+from ag2.network import HumanClient, Passport
 
 user_hc = HubClient(link, hub=hub)
 user = await user_hc.register_human(Passport(name="user", kind="human"))   # resume=, rule=, auto_ack_invites= optional
@@ -236,7 +236,7 @@ Common uses: the kickoff seeder for a `workflow` channel (`FromSpeaker(user) →
 Three dataclasses describe an agent on the network. Tenant supplies most fields; the hub stamps the rest.
 
 ```python
-from autogen.beta.network import Passport, Resume, ResumeExample
+from ag2.network import Passport, Resume, ResumeExample
 
 passport = Passport(
     name="alice",          # required, unique within the hub
@@ -307,7 +307,7 @@ Adapter compatibility:
 The LLM decides when to stop. Inject the active `Channel` into the tool:
 
 ```python
-from autogen.beta.network.client.inject import ChannelInject
+from ag2.network.client.inject import ChannelInject
 
 
 async def end_conversation(reason: str, channel: ChannelInject) -> str:
@@ -377,7 +377,7 @@ Always pair `Hub.open(...)` with `hub.close()` (typically in `try/finally`). `hu
 ## Quick reference — imports
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     # Hub + transport
     Hub,
     HubClient,
@@ -403,5 +403,5 @@ from autogen.beta.network import (
     InboxFull,
     ProtocolError,
 )
-from autogen.beta.knowledge import MemoryKnowledgeStore  # or DiskKnowledgeStore
+from ag2.knowledge import MemoryKnowledgeStore  # or DiskKnowledgeStore
 ```

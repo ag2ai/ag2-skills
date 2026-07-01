@@ -1,6 +1,6 @@
 ---
 name: ag2-middleware
-description: "Intercept the AG2 beta agent loop with `BaseMiddleware` \u2014 wrap full turns (`on_turn`), each LLM call (`on_llm_call`), each tool execution (`on_tool_execution`), or each human-input request (`on_human_input`). Use for retry, logging, history trimming, request mutation, tool auditing, guardrails, or rate limiting. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware` (see `ag2-telemetry`). For per-tool hooks see also `ag2-add-custom-tool` tool-middleware section."
+description: "Intercept the AG2 agent loop with `BaseMiddleware` \u2014 wrap full turns (`on_turn`), each LLM call (`on_llm_call`), each tool execution (`on_tool_execution`), or each human-input request (`on_human_input`). Use for retry, logging, history trimming, request mutation, tool auditing, guardrails, or rate limiting. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware` (see `ag2-telemetry`). For per-tool hooks see also `ag2-add-custom-tool` tool-middleware section."
 license: Apache-2.0
 ---
 
@@ -33,7 +33,7 @@ Each instance is created **once per turn** and can hold per-turn state on `self`
 
 ## Built-in middleware
 
-Importable from `autogen.beta.middleware`:
+Importable from `ag2.middleware`:
 
 | Middleware | Purpose | Constructor |
 |---|---|---|
@@ -48,9 +48,9 @@ Importable from `autogen.beta.middleware`:
 Apply to every turn:
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.middleware import LoggingMiddleware, RetryMiddleware
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.middleware import LoggingMiddleware, RetryMiddleware
 
 agent = Agent(
     "assistant",
@@ -67,7 +67,7 @@ agent = Agent(
 Add temporary middleware for one turn. Both `agent.ask(...)` and `reply.ask(...)` accept it:
 
 ```python
-from autogen.beta.middleware import TokenLimiter
+from ag2.middleware import TokenLimiter
 
 reply = await agent.ask("Summarise the latest messages.", middleware=[LoggingMiddleware()])
 next_turn = await reply.ask("Now answer in one paragraph.", middleware=[TokenLimiter(max_tokens=4000)])
@@ -98,10 +98,10 @@ Subclass `BaseMiddleware`, implement the hooks you need:
 ```python
 import logging
 from collections.abc import Sequence
-from autogen.beta import Agent, Context
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.events import BaseEvent, ModelResponse, ToolCallEvent
-from autogen.beta.middleware import BaseMiddleware, LLMCall, Middleware, ToolExecution
+from ag2 import Agent, Context
+from ag2.config import OpenAIConfig
+from ag2.events import BaseEvent, ModelResponse, ToolCallEvent
+from ag2.middleware import BaseMiddleware, LLMCall, Middleware, ToolExecution
 
 class AuditMiddleware(BaseMiddleware):
     def __init__(self, event: BaseEvent, context: Context, logger: logging.Logger) -> None:
@@ -146,8 +146,8 @@ Agent middleware runs **outside** tool middleware: `BaseMiddleware.on_tool_execu
 ## Going deeper
 
 - `references/builtin_middleware.md` — every built-in's params, common-case recipes, when each fits.
-- `website/docs/beta/middleware.mdx` — full reference, ordering examples, custom-middleware guidelines.
-- `website/docs/beta/tools/tool_middleware.mdx` — per-tool hooks (different mental model — plain async callables, not `BaseMiddleware`).
+- `website/docs/user-guide/middleware.mdx` — full reference, ordering examples, custom-middleware guidelines.
+- `website/docs/user-guide/tools/tool_middleware.mdx` — per-tool hooks (different mental model — plain async callables, not `BaseMiddleware`).
 - For OpenTelemetry instrumentation specifically, see `ag2-telemetry`.
 
 ## Common pitfalls
