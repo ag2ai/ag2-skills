@@ -1,6 +1,6 @@
 """Safety guard — FATAL alert halts the Agent.
 
-Mirrors website/docs/beta/code_examples/08_safety_guard.mdx. A hand-rolled
+Mirrors website/docs/user-guide/code_examples/08_safety_guard.mdx. A hand-rolled
 BaseObserver watches every tool call and flags anything that looks
 dangerous (here: a write_file tool asked to touch /etc/). It emits a
 Severity.FATAL ObserverAlert. The flow from there is fully wired by the
@@ -20,15 +20,15 @@ Run::
 
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.annotations import Context
-from autogen.beta.config import GeminiConfig
-from autogen.beta.events import BaseEvent, ToolCallEvent
-from autogen.beta.events.alert import HaltEvent, ObserverAlert, Severity
-from autogen.beta.observers import BaseObserver
-from autogen.beta.policies import AlertPolicy
-from autogen.beta.stream import MemoryStream
-from autogen.beta.watch import EventWatch
+from ag2 import Agent
+from ag2.annotations import Context
+from ag2.config import GeminiConfig
+from ag2.events import BaseEvent, ToolCallEvent
+from ag2.events.alert import HaltEvent, ObserverAlert, Severity
+from ag2.observers import BaseObserver
+from ag2.policies import AlertPolicy
+from ag2.stream import MemoryStream
+from ag2.watch import EventWatch
 
 
 def section(title: str) -> None:

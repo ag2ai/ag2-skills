@@ -1,6 +1,6 @@
 """Journal companion — knowledge store with working memory.
 
-Mirrors website/docs/beta/code_examples/06_journal_companion.mdx. Persistent
+Mirrors website/docs/user-guide/code_examples/06_journal_companion.mdx. Persistent
 agent memory using three primitives:
 
 - KnowledgeStore — virtual filesystem for agent state.
@@ -22,11 +22,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from autogen.beta import Agent, KnowledgeConfig
-from autogen.beta.aggregate import AggregateTrigger, WorkingMemoryAggregate
-from autogen.beta.config import GeminiConfig
-from autogen.beta.knowledge import DiskKnowledgeStore
-from autogen.beta.policies import ConversationPolicy, WorkingMemoryPolicy
+from ag2 import Agent, KnowledgeConfig
+from ag2.aggregate import AggregateTrigger, WorkingMemoryAggregate
+from ag2.config import GeminiConfig
+from ag2.knowledge import DiskKnowledgeStore
+from ag2.policies import ConversationPolicy, WorkingMemoryPolicy
 
 
 def section(title: str) -> None:

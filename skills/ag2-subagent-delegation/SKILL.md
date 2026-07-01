@@ -1,6 +1,6 @@
 ---
 name: ag2-subagent-delegation
-description: Single-agent recursion and parallel fan-out within one AG2 beta `Agent` — auto-injected `run_subtask` / `run_subtasks(parallel=True)` (opt in via `tasks=TaskConfig(...)`) for self-delegation, and `Agent.as_tool()` as a lightweight no-hub way to call one named agent from inside another. Use when a single coordinator wants to break work into its own sub-tasks, fan out concurrent sub-tasks, or invoke a specialist agent as a tool. Covers context flow, recursion safety, and `persistent_stream` for sub-task history. **For two or more agents actually collaborating with a registry, durable channels, governance, or turn-taking, use `ag2-network-quickstart` instead** — the network is the standard multi-agent pattern in AG2 beta.
+description: Single-agent recursion and parallel fan-out within one AG2 `Agent` — auto-injected `run_subtask` / `run_subtasks(parallel=True)` (opt in via `tasks=TaskConfig(...)`) for self-delegation, and `Agent.as_tool()` as a lightweight no-hub way to call one named agent from inside another. Use when a single coordinator wants to break work into its own sub-tasks, fan out concurrent sub-tasks, or invoke a specialist agent as a tool. Covers context flow, recursion safety, and `persistent_stream` for sub-task history. **For two or more agents actually collaborating with a registry, durable channels, governance, or turn-taking, use `ag2-network-quickstart` instead** — the network is the standard multi-agent pattern in AG2.
 license: Apache-2.0
 ---
 
@@ -29,8 +29,8 @@ Subtask tools are **off by default** (`tasks=False`). Opt in with `tasks=TaskCon
 - `run_subtasks(tasks: list[str], parallel: bool = True)` — fan out multiple in one tool call (default concurrent).
 
 ```python
-from autogen.beta import Agent, TaskConfig
-from autogen.beta.config import GeminiConfig
+from ag2 import Agent, TaskConfig
+from ag2.config import GeminiConfig
 
 config = GeminiConfig(model="gemini-3-flash-preview")
 
@@ -80,8 +80,8 @@ TaskConfig(
 Expose a whole agent as a tool the LLM can name and call:
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import AnthropicConfig
+from ag2 import Agent
+from ag2.config import AnthropicConfig
 
 config = AnthropicConfig(model="claude-sonnet-4-6")
 
@@ -116,7 +116,7 @@ The coordinator's LLM sees `task_researcher` and `task_writer`. Each call has tw
 For more control, use `subagent_tool()` directly:
 
 ```python
-from autogen.beta.tools.subagents import subagent_tool
+from ag2.tools.subagents import subagent_tool
 
 coordinator = Agent("coordinator", config=config, tools=[
     subagent_tool(researcher, description="Research a topic."),
@@ -152,7 +152,7 @@ Self-delegation via `as_tool()` *can* recurse — the child has the same `sub_ta
 
 The simplest safe pattern is to **prefer the auto-injected `run_subtask` / `run_subtasks` path** for self-delegation. Sub-tasks spawned that way are constructed with `tasks=False`, so they have no `run_subtask` tools and recursion is structurally impossible.
 
-If you genuinely need recursive `as_tool()` self-delegation, write a tool middleware that increments a depth counter in `context.dependencies` and short-circuits past a threshold. The `subagents` module exports `subagent_tool`, `background_agent_tool`, `persistent_stream`, and `StreamFactory` from `autogen.beta.tools.subagents` — verify the current public surface there before relying on a built-in depth-limiting helper.
+If you genuinely need recursive `as_tool()` self-delegation, write a tool middleware that increments a depth counter in `context.dependencies` and short-circuits past a threshold. The `subagents` module exports `subagent_tool`, `background_agent_tool`, `persistent_stream`, and `StreamFactory` from `ag2.tools.subagents` — verify the current public surface there before relying on a built-in depth-limiting helper.
 
 ## Sub-task streams
 
@@ -170,7 +170,7 @@ By default, each sub-task gets a fresh `MemoryStream` — its history is isolate
 When a sub-agent benefits from seeing its prior calls (e.g. avoid repeating searches), give it a stream that persists across invocations within the parent context:
 
 ```python
-from autogen.beta.tools.subagents import persistent_stream
+from ag2.tools.subagents import persistent_stream
 
 researcher.as_tool(
     description="Research a topic",
@@ -183,8 +183,8 @@ Stores stream id in `context.dependencies` keyed by `f"ag:{agent.name}:stream"` 
 ### Custom factory
 
 ```python
-from autogen.beta import Agent, Context
-from autogen.beta.streams.redis import RedisStream
+from ag2 import Agent, Context
+from ag2.streams.redis import RedisStream
 
 def make_redis_stream(agent: Agent, ctx: Context) -> RedisStream:
     return RedisStream(MY_REDIS_URL, prefix=f"ag2:sub:{agent.name}")
@@ -195,8 +195,8 @@ researcher.as_tool(description="Research a topic", stream=make_redis_stream)
 ## Going deeper
 
 - Working starter: `assets/research_squad.py` (mirrors `code_examples/05`) — covers both `run_subtasks(parallel=True)` *and* `Agent.as_tool()`, with `TaskStarted` / `TaskCompleted` lifecycle events.
-- Full reference: `website/docs/beta/task_delegation.mdx`.
-- `tasks=` constructor knob (with `KnowledgeConfig`, etc.): `website/docs/beta/agent_harness.mdx`.
+- Full reference: `website/docs/user-guide/subagents.mdx`.
+- `tasks=` constructor knob (with `KnowledgeConfig`, etc.): `website/docs/user-guide/agent_harness.mdx`.
 
 ## Common pitfalls
 

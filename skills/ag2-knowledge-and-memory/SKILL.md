@@ -10,9 +10,9 @@ This skill covers three related primitives that work together:
 
 | Primitive | Lives in | Role |
 |---|---|---|
-| **`KnowledgeStore`** | `autogen.beta.knowledge` | Path-based persistent storage (memory / sqlite / disk / redis) |
-| **Assembly policies** | `autogen.beta.policies` | Shape `(prompts, events)` per turn before the LLM call |
-| **Aggregation / Compaction** | `autogen.beta.aggregate` / `.compact` | Write structured knowledge to the store / trim event history |
+| **`KnowledgeStore`** | `ag2.knowledge` | Path-based persistent storage (memory / sqlite / disk / redis) |
+| **Assembly policies** | `ag2.policies` | Shape `(prompts, events)` per turn before the LLM call |
+| **Aggregation / Compaction** | `ag2.aggregate` / `.compact` | Write structured knowledge to the store / trim event history |
 
 `KnowledgeConfig` wires all three onto an `Agent` via the `knowledge=` constructor parameter; assembly policies go via `assembly=`.
 
@@ -31,11 +31,11 @@ This skill covers three related primitives that work together:
 ## 60-second recipe — persistent working memory
 
 ```python
-from autogen.beta import Agent, KnowledgeConfig
-from autogen.beta.aggregate import AggregateTrigger, WorkingMemoryAggregate
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.knowledge import DiskKnowledgeStore
-from autogen.beta.policies import ConversationPolicy, WorkingMemoryPolicy
+from ag2 import Agent, KnowledgeConfig
+from ag2.aggregate import AggregateTrigger, WorkingMemoryAggregate
+from ag2.config import OpenAIConfig
+from ag2.knowledge import DiskKnowledgeStore
+from ag2.policies import ConversationPolicy, WorkingMemoryPolicy
 
 store = DiskKnowledgeStore("./journal-state")
 config = OpenAIConfig(model="gpt-5")
@@ -98,16 +98,16 @@ Pass `AssemblyPolicy` instances via `assembly=[...]`. The Agent wires an interna
 Validate ordering manually:
 
 ```python
-from autogen.beta.assembly import AssemblerMiddleware
+from ag2.assembly import AssemblerMiddleware
 warnings = AssemblerMiddleware.validate_order(policies)  # returns list of warnings on known bad orderings
 ```
 
-(`AssemblerMiddleware` and the `AssemblyPolicy` protocol live in `autogen.beta.assembly` for advanced/manual harness wiring; you don't need to import them when just passing built-in policies via `assembly=[...]`.)
+(`AssemblerMiddleware` and the `AssemblyPolicy` protocol live in `ag2.assembly` for advanced/manual harness wiring; you don't need to import them when just passing built-in policies via `assembly=[...]`.)
 
 ### Built-in policies
 
 ```python
-from autogen.beta.policies import (
+from ag2.policies import (
     AlertPolicy,
     ConversationPolicy,
     EpisodicMemoryPolicy,
@@ -161,7 +161,7 @@ assembly=[
 `CompactTrigger(max_events=N, max_tokens=M, chars_per_token=4)` — fires when any threshold is crossed.
 
 ```python
-from autogen.beta.compact import CompactTrigger, TailWindowCompact, SummarizeCompact
+from ag2.compact import CompactTrigger, TailWindowCompact, SummarizeCompact
 ```
 
 `SummarizeCompact` inserts a `CompactionSummary` event at the head; `ConversationPolicy` allows it through so the LLM still gets that context.
@@ -252,11 +252,11 @@ The `*Failed` ones are the durable, observable signal — the harness also `logg
 - `assets/journal_companion.py` — runnable end-to-end working-memory demo (mirrors `code_examples/06`).
 - `assets/long_doc_chat.py` — assembly + compaction stress test (mirrors `code_examples/07`).
 - Source docs:
-  - `website/docs/beta/advanced/knowledge_store.mdx` — store API, `EventLogWriter`, `LockedKnowledgeStore`.
-  - `website/docs/beta/advanced/assembly.mdx` — full policy reference and ordering rules.
-  - `website/docs/beta/advanced/aggregation.mdx` — aggregate strategies and custom strategies.
-  - `website/docs/beta/advanced/compaction.mdx` — compact strategies and custom strategies.
-  - `website/docs/beta/agent_harness.mdx` — `KnowledgeConfig` constructor reference, turn-lifecycle middleware order.
+  - `website/docs/user-guide/advanced/knowledge_store.mdx` — store API, `EventLogWriter`, `LockedKnowledgeStore`.
+  - `website/docs/user-guide/advanced/assembly.mdx` — full policy reference and ordering rules.
+  - `website/docs/user-guide/advanced/aggregation.mdx` — aggregate strategies and custom strategies.
+  - `website/docs/user-guide/advanced/compaction.mdx` — compact strategies and custom strategies.
+  - `website/docs/user-guide/agent_harness.mdx` — `KnowledgeConfig` constructor reference, turn-lifecycle middleware order.
 
 ## Common pitfalls
 

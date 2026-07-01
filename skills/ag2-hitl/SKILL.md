@@ -1,6 +1,6 @@
 ---
 name: ag2-hitl
-description: Pause an AG2 beta `Agent` mid-run to collect human input via `context.input()`, or gate a tool call with `approval_required()` middleware. Use when the user wants the agent to ask for confirmation, request missing info (passwords, API keys, data), or have a human approve sensitive / irreversible / expensive tool calls (sending emails, deleting records, payments).
+description: Pause an AG2 `Agent` mid-run to collect human input via `context.input()`, or gate a tool call with `approval_required()` middleware. Use when the user wants the agent to ask for confirmation, request missing info (passwords, API keys, data), or have a human approve sensitive / irreversible / expensive tool calls (sending emails, deleting records, payments).
 license: Apache-2.0
 ---
 
@@ -25,8 +25,8 @@ Two distinct mechanisms — pick by intent:
 A tool requests input via `Context.input(message, timeout=...)`. The agent must have a `hitl_hook` that knows how to collect that input.
 
 ```python
-from autogen.beta import Agent, Context, tool
-from autogen.beta.events import HumanInputRequest, HumanMessage
+from ag2 import Agent, Context, tool
+from ag2.events import HumanInputRequest, HumanMessage
 
 @tool
 async def execute_query(context: Context) -> str:
@@ -69,9 +69,9 @@ If `context.input()` is called and no hook is registered, the framework raises `
 Gate a single tool with the built-in approval middleware. The user is prompted before the tool body runs and can approve or deny.
 
 ```python
-from autogen.beta import Agent, tool
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.middleware import approval_required
+from ag2 import Agent, tool
+from ag2.config import OpenAIConfig
+from ag2.middleware import approval_required
 
 @tool(middleware=[approval_required()])
 def delete_account(user_id: str) -> str:
@@ -129,8 +129,8 @@ The approval middleware runs first (outermost). Once approved, the tool body exe
 
 ## Going deeper
 
-- Source docs: `website/docs/beta/context/human_in_the_loop.mdx` (`context.input`, `hitl_hook`), `website/docs/beta/tools/approval_required.mdx` (`approval_required` middleware).
-- Tool middleware in general — `website/docs/beta/tools/tool_middleware.mdx`. See also `ag2-middleware` for agent-wide HITL interception via `BaseMiddleware.on_human_input()`.
+- Source docs: `website/docs/user-guide/context/human_in_the_loop.mdx` (`context.input`, `hitl_hook`), `website/docs/user-guide/tools/approval_required.mdx` (`approval_required` middleware).
+- Tool middleware in general — `website/docs/user-guide/tools/tool_middleware.mdx`. See also `ag2-middleware` for agent-wide HITL interception via `BaseMiddleware.on_human_input()`.
 - HITL hooks support dependency injection identically to tools — see `../ag2-add-custom-tool/references/dependency_injection.md`.
 
 ## Common pitfalls

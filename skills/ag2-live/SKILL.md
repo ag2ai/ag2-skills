@@ -1,6 +1,6 @@
 ---
 name: ag2-live
-description: Build realtime voice / live audio agents with AG2 beta's `autogen.beta.live` module. Wrap a prompt + provider config in `LiveAgent` and open a bidirectional voice session with `agent.run()`, pumping mic audio in and playing synthesized speech out. Covers the two realtime providers — Gemini Live (`GeminiRealTimeConfig`) and OpenAI Realtime (`OpenAIRealTimeConfig`) with audio/text output modalities, voices, and user-speech transcription; audio I/O over the local sound card (`SoundDeviceRecorder` / `SoundDevicePlayer`, both sounddevice-backed); one-shot speech-to-text (`OpenAITranscriber`, `OpenAITranslationTranscriber`) and its `.pipe(agent)` voice pipeline; text-to-speech (`OpenAITTSConfig`); and `TTSObserver`, which speaks a regular text `Agent`'s streamed tokens aloud. Use when the user wants a talking agent, a phone/voice assistant, live transcription, or to add TTS playback to a text agent.
+description: Build realtime voice / live audio agents with AG2's `ag2.live` module. Wrap a prompt + provider config in `LiveAgent` and open a bidirectional voice session with `agent.run()`, pumping mic audio in and playing synthesized speech out. Covers the two realtime providers — Gemini Live (`GeminiRealTimeConfig`) and OpenAI Realtime (`OpenAIRealTimeConfig`) with audio/text output modalities, voices, and user-speech transcription; audio I/O over the local sound card (`SoundDeviceRecorder` / `SoundDevicePlayer`, both sounddevice-backed); one-shot speech-to-text (`OpenAITranscriber`, `OpenAITranslationTranscriber`) and its `.pipe(agent)` voice pipeline; text-to-speech (`OpenAITTSConfig`); and `TTSObserver`, which speaks a regular text `Agent`'s streamed tokens aloud. Use when the user wants a talking agent, a phone/voice assistant, live transcription, or to add TTS playback to a text agent.
 license: Apache-2.0
 ---
 
@@ -38,7 +38,7 @@ A typical OpenAI voice app on the local sound card: `pip install "ag2[openai-rea
 
 ## Public API
 
-All exported from `autogen.beta.live`:
+All exported from `ag2.live`:
 
 | Symbol | Role |
 |---|---|
@@ -71,13 +71,13 @@ Along the way the provider also emits `TranscriptionChunkEvent` / `Transcription
 ```python title="voice_loop.py"
 import asyncio
 
-from autogen.beta.live import (
+from ag2.live import (
     LiveAgent,
     OpenAIRealTimeConfig,
     SoundDevicePlayer,
     SoundDeviceRecorder,
 )
-from autogen.beta.live.openai import AudioOutput, InputConfig
+from ag2.live.openai import AudioOutput, InputConfig
 
 agent = LiveAgent(
     "voice_bot",
@@ -110,8 +110,8 @@ Set `OPENAI_API_KEY` (or pass `client=AsyncOpenAI(...)`). For Gemini, set `GEMIN
 Swap to Gemini by changing only the config:
 
 ```python
-from autogen.beta.live import GeminiRealTimeConfig
-from autogen.beta.live.gemini import AudioOutput, InputConfig
+from ag2.live import GeminiRealTimeConfig
+from ag2.live.gemini import AudioOutput, InputConfig
 
 agent = LiveAgent(
     "voice_bot",
@@ -128,7 +128,7 @@ agent = LiveAgent(
 
 | | Gemini (`GeminiRealTimeConfig`) | OpenAI (`OpenAIRealTimeConfig`) |
 |---|---|---|
-| Import the knob types from | `autogen.beta.live.gemini` | `autogen.beta.live.openai` |
+| Import the knob types from | `ag2.live.gemini` | `ag2.live.openai` |
 | Output modes | `AudioOutput` (default) / `TextOutput` | `AudioOutput` (default) / `TextOutput` |
 | Voices (`AudioOutput(voice=...)`) | `Aoede`, `Charon`, `Fenrir`, `Kore` (default), `Leda`, `Orus`, `Puck`, `Zephyr` | `alloy` (default), `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar` |
 | Example models (first positional arg) | `gemini-2.5-flash-native-audio-preview-12-2025`, `gemini-3.1-flash-live-preview`, `gemini-live-2.5-flash-preview`, `gemini-2.0-flash-live-001` | `gpt-realtime`, `gpt-realtime-mini`, `gpt-audio-1.5`, `gpt-4o-realtime-preview-2024-10-01` |
@@ -154,7 +154,7 @@ The model name is a **positional** arg; everything else is keyword-only. The `Li
 Both are async context managers (`async with`) and bind to a `ConversationContext` via `context=`. The device opens on `__aenter__` **[needs audio]**; construction alone touches no hardware.
 
 ```python
-from autogen.beta.live import SoundDeviceRecorder, SoundDevicePlayer
+from ag2.live import SoundDeviceRecorder, SoundDevicePlayer
 
 # Recorder: mic -> RecordedAudioEvent on the stream.
 recorder = SoundDeviceRecorder(context=ctx, sample_rate=16000, channels=1)  # block_size optional
@@ -174,10 +174,10 @@ voice = recorder.record(duration=4.0)   # blocks 4s, returns VoiceInput  [needs 
 `OpenAITranscriber` (transcription) and `OpenAITranslationTranscriber` (translate to English) take a `VoiceInput` and return text. `.pipe(agent)` builds a `VoicePipeline` that transcribes then runs a normal text `Agent`:
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.live import OpenAITranscriber, SoundDeviceRecorder
-from autogen.beta.live.stt import VoiceInput
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.live import OpenAITranscriber, SoundDeviceRecorder
+from ag2.live.stt import VoiceInput
 
 agent = Agent("assistant", "You answer questions.", config=OpenAIConfig(model="gpt-4o-mini"))
 pipeline = OpenAITranscriber("gpt-4o-transcribe").pipe(agent)
@@ -200,7 +200,7 @@ followup = await reply.ask(SoundDeviceRecorder().record(4.0))
 `OpenAITTSConfig` synthesizes text into PCM bytes:
 
 ```python
-from autogen.beta.live import OpenAITTSConfig
+from ag2.live import OpenAITTSConfig
 
 tts = OpenAITTSConfig("gpt-4o-mini-tts", voice="alloy", speed=1.0)
 pcm: bytes = await tts.synthesize("Hello there!")   # [needs keys]
@@ -209,10 +209,10 @@ pcm: bytes = await tts.synthesize("Hello there!")   # [needs keys]
 `TTSObserver` turns any **text** streaming `Agent` into a talking one: attach it as an observer and it accumulates `ModelMessageChunk` tokens, synthesizes complete sentences, and emits `SynthesizedAudioEvent` — which a `SoundDevicePlayer` on the same stream plays aloud. This is the bridge between a normal text agent and live audio output (no realtime provider needed).
 
 ```python
-from autogen.beta import Agent, MemoryStream
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.context import ConversationContext
-from autogen.beta.live import OpenAITTSConfig, SoundDevicePlayer, TTSObserver
+from ag2 import Agent, MemoryStream
+from ag2.config import OpenAIConfig
+from ag2.context import ConversationContext
+from ag2.live import OpenAITTSConfig, SoundDevicePlayer, TTSObserver
 
 agent = Agent(
     "narrator",
@@ -260,7 +260,7 @@ Run by this skill's `references/test_samples.py` (all green) — **constructed /
 
 - **Wrong extra installed.** `pip install "ag2[openai-realtime]"` for OpenAI, `"ag2[gemini-realtime]"` for Gemini, `"sounddevice[numpy]"` for local audio. The symbol imports fine but raises on first use otherwise.
 - **`numpy` missing.** `SoundDeviceRecorder` / `SoundDevicePlayer` need numpy — `sounddevice[numpy]` pulls it in. Without it you get an additional-dependency `ImportError`.
-- **Importing knob types from the wrong module.** `AudioOutput` / `TextOutput` / `InputConfig` are provider-specific: `autogen.beta.live.gemini` vs `autogen.beta.live.openai`. They are *not* re-exported from `autogen.beta.live`.
+- **Importing knob types from the wrong module.** `AudioOutput` / `TextOutput` / `InputConfig` are provider-specific: `ag2.live.gemini` vs `ag2.live.openai`. They are *not* re-exported from `ag2.live`.
 - **Recorder, player, and `run()` not sharing one context.** Pass the `ctx` yielded by `agent.run()` into `SoundDeviceRecorder(context=ctx)` / `SoundDevicePlayer(context=ctx)`, or audio events won't reach the session/speaker.
 - **Voice not in the provider's list.** Gemini and OpenAI have different voice names (see matrix). A bare string is accepted but an unknown voice is rejected by the provider at session open.
 - **Expecting server-side / provider tools over realtime.** Only function tools are supported; other tool types raise `NotImplementedError`.
@@ -268,7 +268,7 @@ Run by this skill's `references/test_samples.py` (all green) — **constructed /
 
 ## Going deeper
 
-- Source: `autogen/beta/live/{realtime.py,gemini.py,openai.py,protocols.py,observer.py,stt.py,sound_device.py}`.
+- Source: `ag2/live/{realtime.py,gemini.py,openai.py,protocols.py,observer.py,stt.py,sound_device.py}`.
 - `realtime.py` — `LiveAgent` + the `RealtimeConfig` protocol.
 - For sending a recorded audio *file* as a one-off input to a text agent, see `ag2-multimodal-input` (`AudioInput`).
 - For observers in general (token monitors, loop detection), see `ag2-observers-and-alerts`.

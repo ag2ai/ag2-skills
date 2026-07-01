@@ -1,6 +1,6 @@
 ---
 name: ag2-shell-tool
-description: Give an AG2 beta `Agent` the ability to run shell commands. Covers `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider) and the provider-native `ShellTool` (OpenAI Responses execution). Use when the user wants the Agent to execute commands, build/test code, manage files, or operate on a workspace. Always pair with sandboxing — `allowed`, `blocked`, `ignore`, or `readonly`.
+description: Give an AG2 `Agent` the ability to run shell commands. Covers `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider) and the provider-native `ShellTool` (OpenAI Responses execution). Use when the user wants the Agent to execute commands, build/test code, manage files, or operate on a workspace. Always pair with sandboxing — `allowed`, `blocked`, `ignore`, or `readonly`.
 license: Apache-2.0
 ---
 
@@ -20,9 +20,9 @@ Two distinct tools, both named "shell" — pick deliberately:
 ## 60-second recipe — `SandboxShellTool`
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import AnthropicConfig
-from autogen.beta.tools import SandboxShellTool
+from ag2 import Agent
+from ag2.config import AnthropicConfig
+from ag2.tools import SandboxShellTool
 
 agent = Agent(
     "coder",
@@ -41,7 +41,7 @@ With no arguments, `SandboxShellTool` defaults to a `LocalEnvironment()` that cr
 
 ```python
 from pathlib import Path
-from autogen.beta.tools import LocalEnvironment, SandboxShellTool
+from ag2.tools import LocalEnvironment, SandboxShellTool
 
 SandboxShellTool(LocalEnvironment("/tmp/my_project"))
 SandboxShellTool(LocalEnvironment(Path("/tmp/my_project")))
@@ -59,7 +59,7 @@ For anything beyond a throwaway demo, lock down what the agent can do. The **env
 4. Execute via the environment's `subprocess`.
 
 ```python
-from autogen.beta.tools import LocalEnvironment, SandboxShellTool
+from ag2.tools import LocalEnvironment, SandboxShellTool
 
 sh = SandboxShellTool(
     LocalEnvironment(
@@ -78,7 +78,7 @@ sh = SandboxShellTool(
 For inspection-only access (`cat`, `head`, `tail`, `ls`, `grep`, `find`, `git log`, `git diff`, `git status`, …):
 
 ```python
-from autogen.beta.tools import LocalEnvironment, SandboxShellTool
+from ag2.tools import LocalEnvironment, SandboxShellTool
 
 sh = SandboxShellTool(LocalEnvironment(path="/my/codebase"), readonly=True)
 ```
@@ -112,7 +112,7 @@ Pass an explicit `allowed=[...]` to override the built-in read-only allowlist.
 Files persist in `workdir` across `ask()` calls, so the agent can build on prior work:
 
 ```python
-from autogen.beta.tools import LocalEnvironment, SandboxShellTool
+from ag2.tools import LocalEnvironment, SandboxShellTool
 
 sh = SandboxShellTool(LocalEnvironment(path="/tmp/counter_demo"))
 agent = Agent("coder", "You manage files.", config=config, tools=[sh])
@@ -127,8 +127,8 @@ reply3 = await reply2.ask("Read the counter and tell me the value")
 `ShellTool` is a provider-executed capability flag. **Only the OpenAI Responses API runs shell server-side.** Anthropic's `bash` tool is client-side and is rejected with `UnsupportedToolError` — use `SandboxShellTool` there. Gemini is also unsupported.
 
 ```python
-from autogen.beta.config import OpenAIResponsesConfig
-from autogen.beta.tools import ShellTool
+from ag2.config import OpenAIResponsesConfig
+from ag2.tools import ShellTool
 
 agent = Agent("devops", config=OpenAIResponsesConfig(model="gpt-4.1"), tools=[ShellTool()])
 ```
@@ -136,8 +136,8 @@ agent = Agent("devops", config=OpenAIResponsesConfig(model="gpt-4.1"), tools=[Sh
 OpenAI lets you configure the execution environment:
 
 ```python
-from autogen.beta.config import OpenAIResponsesConfig
-from autogen.beta.tools import ContainerAutoEnvironment, NetworkPolicy, ShellTool
+from ag2.config import OpenAIResponsesConfig
+from ag2.tools import ContainerAutoEnvironment, NetworkPolicy, ShellTool
 
 agent = Agent(
     "devops",
@@ -168,12 +168,12 @@ Environment options (OpenAI-only):
 | **Environment control** | Full (`allowed`, `blocked`, `ignore`, `readonly`, …) | Limited (provider-dependent) |
 | **Local FS access** | Yes (you choose what's exposed) | No |
 | **Network control** | Via `blocked` / `allowed` patterns | OpenAI: `NetworkPolicy` |
-| **Import** | `from autogen.beta.tools import SandboxShellTool, LocalEnvironment` | `from autogen.beta.tools import ShellTool` |
+| **Import** | `from ag2.tools import SandboxShellTool, LocalEnvironment` | `from ag2.tools import ShellTool` |
 
 ## Going deeper
 
-- `website/docs/beta/tools/sandbox.mdx` — full `SandboxShellTool` / `LocalEnvironment` reference, command-filtering semantics.
-- `website/docs/beta/tools/builtin_tools.mdx#shell` — provider-native `ShellTool` setup and environment configs.
+- `website/docs/user-guide/tools/local_shell.mdx` — full `SandboxShellTool` / `LocalEnvironment` reference, command-filtering semantics.
+- `website/docs/user-guide/tools/builtin_tools.mdx#shell` — provider-native `ShellTool` setup and environment configs.
 - For **human-approval gating before each shell call**, layer `approval_required()` middleware (see `ag2-hitl`).
 
 ## Common pitfalls

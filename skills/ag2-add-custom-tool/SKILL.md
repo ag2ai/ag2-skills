@@ -1,6 +1,6 @@
 ---
 name: ag2-add-custom-tool
-description: Add a custom Python tool to an AG2 beta `Agent` using the `@tool` decorator. Use when the user wants to give an Agent a new capability backed by Python code (API calls, DB queries, computations, file ops). Covers sync and async tools, parameter typing, Pydantic schema customisation, returning typed `Input` / `ToolResult` (text / data / images / binary), `final=True` early-exit, and dependency injection via `Context` / `Inject` / `Variable` / `Depends`.
+description: Add a custom Python tool to an AG2 `Agent` using the `@tool` decorator. Use when the user wants to give an Agent a new capability backed by Python code (API calls, DB queries, computations, file ops). Covers sync and async tools, parameter typing, Pydantic schema customisation, returning typed `Input` / `ToolResult` (text / data / images / binary), `final=True` early-exit, and dependency injection via `Context` / `Inject` / `Variable` / `Depends`.
 license: Apache-2.0
 ---
 
@@ -13,8 +13,8 @@ The user wants their `Agent` to take a real-world action: hit an API, query a da
 ## 60-second recipe
 
 ```python
-from autogen.beta import Agent, tool
-from autogen.beta.config import OpenAIConfig
+from ag2 import Agent, tool
+from ag2.config import OpenAIConfig
 
 @tool
 def calculate_shipping_cost(destination: str, weight_kg: float) -> str:
@@ -83,7 +83,7 @@ Use `Annotated[T, Field(...)]` to give the LLM strict bounds. The framework forw
 ```python
 from typing import Annotated
 from pydantic import Field
-from autogen.beta import tool
+from ag2 import tool
 
 @tool
 def set_temperature(
@@ -107,7 +107,7 @@ def math_op(a: int, b: int) -> int:
 A plain `str` return is wrapped in `TextInput` automatically. For richer payloads, return an `Input` subtype or compose with `ToolResult`:
 
 ```python
-from autogen.beta import DataInput, ImageInput, TextInput, ToolResult, tool
+from ag2 import DataInput, ImageInput, TextInput, ToolResult, tool
 
 @tool
 def get_status(task_id: str) -> TextInput:
@@ -137,7 +137,7 @@ For raw bytes of arbitrary format, use `BinaryInput(data=..., media_type="applic
 When the tool already knows the exact final answer, skip the extra LLM round-trip:
 
 ```python
-from autogen.beta import ToolResult, tool
+from ag2 import ToolResult, tool
 
 @tool
 def handoff_to_human(ticket_id: str) -> ToolResult:
@@ -153,7 +153,7 @@ Tools can pull execution-time values without exposing them to the LLM. See `refe
 
 ```python
 from typing import Annotated
-from autogen.beta import Context, Inject, Variable, tool
+from ag2 import Context, Inject, Variable, tool
 
 @tool
 def query_db(query: str, ctx: Context) -> str:
@@ -177,11 +177,11 @@ def send(text: str, api_key: Annotated[str, Variable()]) -> str:
 ## Going deeper
 
 - `references/dependency_injection.md` — `Context` vs `Inject` vs `Variable` vs `Depends`, defaults, factories, mutability, overrides.
-- `website/docs/beta/tools/tools.mdx` — full `@tool` reference, including the synthesized JSON Schema.
-- `website/docs/beta/depends.mdx` — `Depends` lifecycle, yield-based teardown, caching, test overrides.
-- `website/docs/beta/inputs/inputs.mdx` — the `Input` factory hierarchy and provider support matrix.
-- `website/docs/beta/tools/toolkits.mdx` — bundle related tools into a reusable `Toolkit`.
-- `website/docs/beta/tools/tool_middleware.mdx` — async hooks around a single tool (validation, redaction, approval — see also `ag2-hitl`).
+- `website/docs/user-guide/tools/tools.mdx` — full `@tool` reference, including the synthesized JSON Schema.
+- `website/docs/user-guide/depends.mdx` — `Depends` lifecycle, yield-based teardown, caching, test overrides.
+- `website/docs/user-guide/multimodal/inputs.mdx` — the `Input` factory hierarchy and provider support matrix.
+- `website/docs/user-guide/tools/toolkits.mdx` — bundle related tools into a reusable `Toolkit`.
+- `website/docs/user-guide/tools/tool_middleware.mdx` — async hooks around a single tool (validation, redaction, approval — see also `ag2-hitl`).
 
 ## Common pitfalls
 

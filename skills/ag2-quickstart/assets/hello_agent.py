@@ -1,6 +1,6 @@
-"""Hello Agent — minimal AG2 beta example.
+"""Hello Agent — minimal AG2 example.
 
-Mirrors website/docs/beta/code_examples/01_hello_agent.mdx. The smallest
+Mirrors website/docs/user-guide/code_examples/01_hello_agent.mdx. The smallest
 possible end-to-end: instantiate an Agent with one model config, call ask(),
 print the reply, then reuse the same Agent for a second turn.
 
@@ -13,8 +13,8 @@ import asyncio
 
 from dotenv import load_dotenv
 
-from autogen.beta import Agent
-from autogen.beta.config import GeminiConfig
+from ag2 import Agent
+from ag2.config import GeminiConfig
 
 # Load API keys from a .env file at the project root (GEMINI_API_KEY here).
 # Swap GeminiConfig for OpenAIConfig / AnthropicConfig if that's the key you have.

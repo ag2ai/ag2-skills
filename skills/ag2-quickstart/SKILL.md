@@ -1,14 +1,14 @@
 ---
 name: ag2-quickstart
-description: Build a minimal AG2 beta `Agent` end to end — pick a model provider, set a prompt, call `agent.ask()`, then continue the conversation with `reply.ask()` (multi-turn). Use when the user is starting a new AG2 beta project, has no working `Agent` yet, or needs the multi-turn chaining pattern. Covers `OpenAIConfig`, `AnthropicConfig`, `GeminiConfig`, `OllamaConfig` etc., and env-var fallback for API keys.
+description: Build a minimal AG2 `Agent` end to end — pick a model provider, set a prompt, call `agent.ask()`, then continue the conversation with `reply.ask()` (multi-turn). Use when the user is starting a new AG2 project, has no working `Agent` yet, or needs the multi-turn chaining pattern. Covers `OpenAIConfig`, `AnthropicConfig`, `GeminiConfig`, `OllamaConfig` etc., and env-var fallback for API keys.
 license: Apache-2.0
 ---
 
-# Quickstart: build your first AG2 beta Agent
+# Quickstart: build your first AG2 Agent
 
 ## When to use
 
-- The user is starting from a blank file and wants a working AG2 beta agent.
+- The user is starting from a blank file and wants a working AG2 agent.
 - The user is unsure which provider config to use.
 - The user wants to chain follow-up turns without losing conversation context.
 - A larger task needs the basic Agent setup as its skeleton — start here, then layer the relevant feature skill on top.
@@ -24,7 +24,7 @@ license: Apache-2.0
 >
 > If you cannot run commands, state the exact `pip install` command. This is part of finishing the task, not an optional note.
 >
-> For a multi-file project (more than a throwaway script), also drop a `requirements.txt` pinning `ag2` with the extras you used (e.g. `ag2[openai]>=0.13.4`) so the environment is reproducible.
+> For a multi-file project (more than a throwaway script), also drop a `requirements.txt` pinning `ag2` with the extras you used (e.g. `ag2[openai]>=0.14.0`) so the environment is reproducible.
 
 Install the right provider extra and have a key for it. Each `*Config` requires its provider SDK — without the matching extra you'll see `ImportError: ... requires optional dependencies. Install with pip install "ag2[<provider>]"`.
 
@@ -47,15 +47,15 @@ load_dotenv()  # reads .env at project root
 Quick sanity-check before debugging weird import errors — make sure you're running against the ag2 you think:
 
 ```bash
-python -c "import sys, autogen; print(sys.executable); print('ag2', autogen.__version__)"
+python -c "import sys, ag2; from importlib.metadata import version; print(sys.executable); print('ag2', version('ag2'))"
 ```
 
 ## 60-second recipe
 
 ```python
 import asyncio
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
+from ag2 import Agent
+from ag2.config import OpenAIConfig
 
 async def main() -> None:
     agent = Agent(
@@ -79,16 +79,16 @@ asyncio.run(main())
 
 ## Picking a provider
 
-Each provider has its own config class in `autogen.beta.config`. All accept `model=`, optional `api_key=`, and (where supported) `streaming=True`. **Streaming is recommended** — AG2 beta is async- and streaming-first.
+Each provider has its own config class in `ag2.config`. All accept `model=`, optional `api_key=`, and (where supported) `streaming=True`. **Streaming is recommended** — AG2 is async- and streaming-first.
 
 ```python
-from autogen.beta.config import OpenAIConfig          # gpt-4o, gpt-5-*, o-series, etc.
-from autogen.beta.config import OpenAIResponsesConfig # OpenAI Responses API (image gen, file_id support)
-from autogen.beta.config import AnthropicConfig       # claude-sonnet-4-6, claude-opus-4-7, etc.
-from autogen.beta.config import GeminiConfig          # Gemini Developer API (api_key)
-from autogen.beta.config import VertexAIConfig        # Gemini on Google Vertex AI (project + location)
-from autogen.beta.config import OllamaConfig          # local Ollama
-from autogen.beta.config import DashScopeConfig       # Alibaba Qwen
+from ag2.config import OpenAIConfig          # gpt-4o, gpt-5-*, o-series, etc.
+from ag2.config import OpenAIResponsesConfig # OpenAI Responses API (image gen, file_id support)
+from ag2.config import AnthropicConfig       # claude-sonnet-4-6, claude-opus-4-7, etc.
+from ag2.config import GeminiConfig          # Gemini Developer API (api_key)
+from ag2.config import VertexAIConfig        # Gemini on Google Vertex AI (project + location)
+from ag2.config import OllamaConfig          # local Ollama
+from ag2.config import DashScopeConfig       # Alibaba Qwen
 
 config = AnthropicConfig(model="claude-sonnet-4-6", streaming=True)
 ```
@@ -140,14 +140,14 @@ The per-ask config completely replaces the agent's config for that turn.
 
 - Working starter (single-turn): `assets/hello_agent.py` (mirrors `code_examples/01`).
 - Multi-turn starter: `assets/multi_turn.py` (mirrors `code_examples/03`).
-- Full provider reference, including `VertexAIConfig` auth, `extra_body`, custom `httpx` client, env-var fallback table: `website/docs/beta/model_configuration.mdx`.
-- Agent communication API surface (events, observing, HITL): `website/docs/beta/agents.mdx`.
-- Static, dynamic, per-turn prompts: `website/docs/beta/system_prompts.mdx`.
+- Full provider reference, including `VertexAIConfig` auth, `extra_body`, custom `httpx` client, env-var fallback table: `website/docs/user-guide/model_configuration.mdx`.
+- Agent communication API surface (events, observing, HITL): `website/docs/user-guide/agents.mdx`.
+- Static, dynamic, per-turn prompts: `website/docs/user-guide/system_prompts.mdx`.
 
 ## Common pitfalls
 
 - **Forgetting to `await`** — every method on `Agent` / `AgentReply` is async. Wrap in `asyncio.run(main())` for scripts.
 - **Calling `agent.ask()` twice expecting context to carry** — it doesn't; use `reply.ask()` instead.
 - **Hardcoding API keys** — prefer env-var fallback (`OPENAI_API_KEY`, etc.) so configs commit cleanly.
-- **Skipping `streaming=True`** — AG2 beta is streaming-first; you'll get a worse user experience without it on supported providers.
+- **Skipping `streaming=True`** — AG2 is streaming-first; you'll get a worse user experience without it on supported providers.
 - **Per-ask `config=` is total override**, not a partial merge — be deliberate about which knobs you set.

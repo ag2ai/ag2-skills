@@ -64,10 +64,10 @@ The default handler wraps the LLM's plain-text reply into the workflow `EV_PACKE
 ```python
 import asyncio
 
-from autogen.beta import Agent
-from autogen.beta.config import AnthropicConfig
-from autogen.beta.knowledge import MemoryKnowledgeStore
-from autogen.beta.network import (
+from ag2 import Agent
+from ag2.config import AnthropicConfig
+from ag2.knowledge import MemoryKnowledgeStore
+from ag2.network import (
     EV_CHANNEL_CLOSED,
     Hub,
     HubClient,
@@ -155,7 +155,7 @@ When you do `agent.open(type="workflow", ...)` then `await channel.send(text)`, 
 So if your design wants the *first agent that should actually think* (the drafter, the researcher, the planner) to respond to the kickoff prompt, that agent must **not** be `initial_speaker` and must **not** be the one calling `channel.send()`. The clean answer is a **`HumanClient`** as the seeder — a non-LLM participant (no `Agent`, no plugin) whose only job is to open the channel and post the brief. Make it `initial_speaker` and route `FromSpeaker(user) → AgentTarget(drafter)`:
 
 ```python
-from autogen.beta.network import HumanClient, Passport  # plus the usual imports
+from ag2.network import HumanClient, Passport  # plus the usual imports
 
 user_hc = HubClient(link, hub=hub)
 user = await user_hc.register_human(Passport(name="user", kind="human"))   # ← register_human, not register
@@ -226,7 +226,7 @@ graph = TransitionGraph.round_robin(
 A triage agent inspects each request and routes to a specialist via a tool call:
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     AgentTarget, FromSpeaker, RevertToInitiatorTarget,
     TerminateTarget, ToolCalled, Transition, TransitionGraph,
 )
@@ -252,7 +252,7 @@ graph = TransitionGraph(
 For each `ToolCalled(name) → AgentTarget(agent)` transition, attach an `@tool`-decorated function on the speaker's `Agent`. The simplest form returns a typed `Handoff` — the framework reads it from the tool's result and routes:
 
 ```python
-from autogen.beta.network import Handoff
+from ag2.network import Handoff
 
 
 # `.tool` lives on `Agent`. The `AgentClient` returned by `hc.register(...)`
@@ -278,13 +278,13 @@ The typed `Handoff` return supersedes the matching `ToolCalled` rule when both a
 
 ## Context variables — the read/write loop
 
-Channel-scoped mutable state lives on `WorkflowState.context_vars: dict[str, Any]`. It's the modern equivalent of classic `ContextVariables` from `autogen.agentchat.group`, scoped to one workflow channel and persisted as `EV_CONTEXT_SET` envelopes on the WAL.
+Channel-scoped mutable state lives on `WorkflowState.context_vars: dict[str, Any]`, scoped to one workflow channel and persisted as `EV_CONTEXT_SET` envelopes on the WAL.
 
 ### Writing context (from a tool)
 
 ```python
-from autogen.beta.network import ChannelInject, EV_CONTEXT_SET
-from autogen.beta.network.workflow_helpers import set_context
+from ag2.network import ChannelInject, EV_CONTEXT_SET
+from ag2.network.workflow_helpers import set_context
 
 
 async def set_route(route: str, channel: ChannelInject) -> str:
@@ -321,7 +321,7 @@ Transition(
 ### Reading context (in a tool)
 
 ```python
-from autogen.beta.network import ChannelStateInject
+from ag2.network import ChannelStateInject
 
 
 async def increment_counter(channel: ChannelInject, state: ChannelStateInject) -> str:
@@ -393,7 +393,7 @@ The reviewer's `approve` call writes `done=True`; the reviewer's reply text land
 
 ## The eight cookbook patterns
 
-The AG2 docs ship a [Pattern Cookbook](https://docs.ag2.ai/docs/beta/network/pattern_cookbook/pattern_cookbook) with runnable examples. One-line summaries — each one is a `workflow` channel with a specific graph:
+The AG2 docs ship a [Pattern Cookbook](https://docs.ag2.ai/docs/user-guide/network/pattern_cookbook/pattern_cookbook) with runnable examples. One-line summaries — each one is a `workflow` channel with a specific graph:
 
 | Pattern | Graph | When |
 |---|---|---|
@@ -416,7 +416,7 @@ When the built-ins don't fit, implement the `Protocol` and register the class so
 from typing import ClassVar
 from dataclasses import dataclass, field
 
-from autogen.beta.network import (
+from ag2.network import (
     Envelope,
     TransitionDecision,
     TransitionTarget,
@@ -457,7 +457,7 @@ The translation is mostly mechanical. The two systems share the vocabulary — s
 
 ### Concept mapping
 
-| Classic | Beta network | Notes |
+| AG2 Classic | AG2 network | Notes |
 |---|---|---|
 | `GroupChat(agents=[...])` | `workflow` channel with participants | The hub plays `GroupChatManager`'s role. |
 | `GroupChatManager` | `WorkflowAdapter` + `Hub` | Turn-taking moves into the hub. |
@@ -481,7 +481,7 @@ groupchat = GroupChat(agents=[alice, bob, carol],
 manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 alice.initiate_chat(manager, message="Topic: …")
 
-# Beta network
+# AG2 network
 graph = TransitionGraph.round_robin(
     participants=[alice.agent_id, bob.agent_id, carol.agent_id],
     max_turns=6,
@@ -502,7 +502,7 @@ await channel.send("Topic: …")
 def escalate(reason: str) -> ReplyResult:
     return ReplyResult(target=AgentTarget(security_reviewer), message=...)
 
-# Beta network — attach to the Agent *before* registering with the hub
+# AG2 network — attach to the Agent *before* registering with the hub
 @triage_agent.tool
 async def escalate(reason: str = "") -> Handoff:
     # Handoff.target is the Passport NAME (resolved name → id by the framework),
@@ -543,7 +543,7 @@ class WorkflowState:
 ## Quick reference — imports
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     # Graph and transitions
     TransitionGraph,
     Transition,
@@ -574,5 +574,5 @@ from autogen.beta.network import (
     # Seeding a workflow (kickoff participant)
     HumanClient,  # via HubClient.register_human(Passport(name=..., kind="human"))
 )
-from autogen.beta.network.workflow_helpers import set_context, delete_context
+from ag2.network.workflow_helpers import set_context, delete_context
 ```

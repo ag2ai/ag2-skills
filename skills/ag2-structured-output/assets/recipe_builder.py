@@ -1,6 +1,6 @@
 """Recipe builder — tools and structured output.
 
-Mirrors website/docs/beta/code_examples/02_recipe_builder.mdx. Demonstrates
+Mirrors website/docs/user-guide/code_examples/02_recipe_builder.mdx. Demonstrates
 two core Agent features on top of the bare loop:
 
 1. A custom @tool function the LLM can call (scale_ingredient).
@@ -15,8 +15,8 @@ import asyncio
 
 from pydantic import BaseModel, Field
 
-from autogen.beta import Agent
-from autogen.beta.config import GeminiConfig
+from ag2 import Agent
+from ag2.config import GeminiConfig
 
 
 def section(title: str) -> None:

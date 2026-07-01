@@ -1,6 +1,6 @@
 ---
 name: ag2-multimodal-input
-description: Send images, audio, video, or documents into an AG2 beta `Agent` alongside text. Pass `ImageInput`, `AudioInput`, `VideoInput`, or `DocumentInput` as positional args to `agent.ask(...)`. Use when the user wants the agent to process non-text input — describe a photo, transcribe audio, summarise a PDF, analyse a video. Covers per-provider support matrix, the four ways to source data (URL / path / bytes / file_id), Gemini-specific YouTube + media-resolution + clipping, OpenAI image-detail, Anthropic prompt-caching on attachments, and `FilesAPI` for upload lifecycle.
+description: Send images, audio, video, or documents into an AG2 `Agent` alongside text. Pass `ImageInput`, `AudioInput`, `VideoInput`, or `DocumentInput` as positional args to `agent.ask(...)`. Use when the user wants the agent to process non-text input — describe a photo, transcribe audio, summarise a PDF, analyse a video. Covers per-provider support matrix, the four ways to source data (URL / path / bytes / file_id), Gemini-specific YouTube + media-resolution + clipping, OpenAI image-detail, Anthropic prompt-caching on attachments, and `FilesAPI` for upload lifecycle.
 license: Apache-2.0
 ---
 
@@ -13,9 +13,9 @@ The user wants the agent to process non-text input: an image to describe, audio 
 ## 60-second recipe
 
 ```python
-from autogen.beta import Agent
-from autogen.beta.config import GeminiConfig
-from autogen.beta.events import ImageInput
+from ag2 import Agent
+from ag2.config import GeminiConfig
+from ag2.events import ImageInput
 
 agent = Agent(
     "vision",
@@ -50,7 +50,7 @@ reply = await agent.ask(
 Each accepts the same four data sources:
 
 ```python
-from autogen.beta.events import ImageInput
+from ag2.events import ImageInput
 
 ImageInput("https://example.com/photo.jpg")     # URL
 ImageInput(path="photo.jpg")                    # local file
@@ -82,7 +82,7 @@ Unsupported combinations raise `UnsupportedInputError` with a clear message.
 ### Gemini — YouTube URLs work directly
 
 ```python
-from autogen.beta.events import VideoInput
+from ag2.events import VideoInput
 
 video = VideoInput("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 reply = await agent.ask("Summarize this video.", video)
@@ -92,7 +92,7 @@ reply = await agent.ask("Summarize this video.", video)
 
 ```python
 from google import genai
-from autogen.beta.events import VideoInput
+from ag2.events import VideoInput
 import time
 
 client = genai.Client()
@@ -130,7 +130,7 @@ ImageInput(data=raw, media_type="image/png", vendor_metadata={"detail": "low"}) 
 
 ```python
 import anthropic
-from autogen.beta.events import ImageInput, DocumentInput
+from ag2.events import ImageInput, DocumentInput
 
 client = anthropic.Anthropic()
 uploaded = client.beta.files.upload(file=("photo.jpg", open("photo.jpg", "rb"), "image/jpeg"))
@@ -147,8 +147,8 @@ doc = DocumentInput(path="report.pdf", vendor_metadata={"cache_control": {"type"
 For any provider that has a file API (`OpenAIConfig`, `OpenAIResponsesConfig`, `AnthropicConfig`, `GeminiConfig`):
 
 ```python
-from autogen.beta import FilesAPI
-from autogen.beta.config import OpenAIResponsesConfig
+from ag2 import FilesAPI
+from ag2.config import OpenAIResponsesConfig
 
 files = FilesAPI(OpenAIResponsesConfig(model="gpt-5-mini"))
 
@@ -167,7 +167,7 @@ await files.delete(uploaded.file_id)
 Pass the `file_id` to `DocumentInput`, `ImageInput`, etc.:
 
 ```python
-from autogen.beta.events import DocumentInput
+from ag2.events import DocumentInput
 
 doc = DocumentInput(file_id=uploaded.file_id)
 reply = await agent.ask("Summarize this report.", doc)
@@ -175,8 +175,8 @@ reply = await agent.ask("Summarize this report.", doc)
 
 ## Going deeper
 
-- `website/docs/beta/inputs/inputs.mdx` — full provider matrix and `vendor_metadata` reference.
-- `website/docs/beta/advanced/files.mdx` — `FilesAPI` reference (upload / list / read / delete).
+- `website/docs/user-guide/multimodal/inputs.mdx` — full provider matrix and `vendor_metadata` reference.
+- `website/docs/user-guide/advanced/files.mdx` — `FilesAPI` reference (upload / list / read / delete).
 - For tools that **return** images / binary back to the LLM, see `ag2-add-custom-tool` (`ImageInput`, `BinaryInput`, `ToolResult`).
 
 ## Common pitfalls

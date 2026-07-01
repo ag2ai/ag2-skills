@@ -1,16 +1,16 @@
 ---
 name: ag2-overview
-description: Map of AG2 beta capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 beta (autogen.beta) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, MCP server hosting, A2A protocol, realtime voice, telemetry, testing, or evaluation.
+description: Map of AG2 capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 (ag2) but the specific feature isn't yet clear — agents, tools, model config, delegation, memory, observers, structured output, HITL, AG-UI, MCP server hosting, A2A protocol, realtime voice, telemetry, testing, or evaluation.
 license: Apache-2.0
 ---
 
-# AG2 Beta — capability map
+# AG2 — capability map
 
-AG2 beta (`autogen.beta`) is an async, protocol-driven agent framework. The full reference docs live under `website/docs/beta/`. This skill is the index of sibling skills that cover the common build paths.
+AG2 (`ag2`) is an async, protocol-driven agent framework. The full reference docs live under `website/docs/user-guide/`. This skill is the index of sibling skills that cover the common build paths.
 
 ## When to use
 
-Read this file first when a request mentions "AG2 beta", "autogen.beta", or building agents in this repo and you don't yet know which feature is needed. Use the table below to pick the right specialised skill, then load that skill's `SKILL.md` for the recipe.
+Read this file first when a request mentions "AG2", "ag2", or building agents in this repo and you don't yet know which feature is needed. Use the table below to pick the right specialised skill, then load that skill's `SKILL.md` for the recipe.
 
 ## Before you start
 
@@ -18,7 +18,7 @@ Anything you build with AG2 needs three things in place. Get these right once an
 
 1. **Install the right provider extra** — `pip install "ag2[openai]"`, `ag2[anthropic]`, `ag2[gemini]`, etc. The `*Config` class will raise `ImportError: ... requires optional dependencies` without it. **Run the install before delivering code.** If you cannot run commands, state the exact `pip install` command. This is a required step.
 2. **Set the matching API key** — `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). Loading from a project-root `.env` via `from dotenv import load_dotenv; load_dotenv()` is the common pattern.
-3. **Sanity-check the install** — `python -c "import sys, autogen; print(sys.executable, autogen.__version__)"`. If you have multiple Python environments, this confirms which `ag2` your script will actually import.
+3. **Sanity-check the install** — `python -c "import sys, ag2; from importlib.metadata import version; print(sys.executable, version('ag2'))"`. If you have multiple Python environments, this confirms which `ag2` your script will actually import.
 
 Full per-provider table (install + env var + config class) lives in `ag2-quickstart` → "Prerequisites".
 
@@ -48,7 +48,7 @@ Full per-provider table (install + env var + config class) lives in `ag2-quickst
 
 ## Multi-agent networks
 
-Whenever two or more agents need to interact, load **`ag2-network-quickstart`** first — the network is the standard multi-agent pattern in AG2 beta. It covers the `Hub` setup and the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form). After the quickstart, route to the right deep-dive:
+Whenever two or more agents need to interact, load **`ag2-network-quickstart`** first — the network is the standard multi-agent pattern in AG2. It covers the `Hub` setup and the two 2-party channel adapters (`consulting` for strict 1Q1R and `conversation` for free-form). After the quickstart, route to the right deep-dive:
 
 | User intent | Skill | What it covers |
 |---|---|---|

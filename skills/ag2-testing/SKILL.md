@@ -1,6 +1,6 @@
 ---
 name: ag2-testing
-description: Test AG2 beta agents and tools without hitting a real LLM provider. Pass `TestConfig(...)` from `autogen.beta.testing` as the agent's config (or per-`ask`) to mock LLM responses, inject `ToolCallEvent`s to simulate tool execution, and assert success / error paths. Use when the user is writing pytest tests for an Agent or Tool.
+description: Test AG2 agents and tools without hitting a real LLM provider. Pass `TestConfig(...)` from `ag2.testing` as the agent's config (or per-`ask`) to mock LLM responses, inject `ToolCallEvent`s to simulate tool execution, and assert success / error paths. Use when the user is writing pytest tests for an Agent or Tool.
 license: Apache-2.0
 ---
 
@@ -8,14 +8,14 @@ license: Apache-2.0
 
 ## When to use
 
-Writing tests for code that builds AG2 beta `Agent`s, custom `@tool` functions, middleware, or response schemas — anywhere you don't want to make real LLM API calls.
+Writing tests for code that builds AG2 `Agent`s, custom `@tool` functions, middleware, or response schemas — anywhere you don't want to make real LLM API calls.
 
 ## 60-second recipe — mock an LLM response
 
 ```python
 import pytest
-from autogen.beta import Agent
-from autogen.beta.testing import TestConfig
+from ag2 import Agent
+from ag2.testing import TestConfig
 
 @pytest.mark.asyncio
 async def test_mocked_response():
@@ -32,9 +32,9 @@ Pass a `ToolCallEvent` first (the model "decides" to call the tool), then the fi
 
 ```python
 import pytest
-from autogen.beta import Agent
-from autogen.beta.events import ToolCallEvent
-from autogen.beta.testing import TestConfig
+from ag2 import Agent
+from ag2.events import ToolCallEvent
+from ag2.testing import TestConfig
 
 @pytest.mark.asyncio
 async def test_tool_success():
@@ -75,7 +75,7 @@ async def test_tool_raises():
 If the LLM calls a tool the agent doesn't have, the framework raises `ToolNotFoundError`:
 
 ```python
-from autogen.beta.exceptions import ToolNotFoundError
+from ag2.exceptions import ToolNotFoundError
 
 @pytest.mark.asyncio
 async def test_tool_not_found():
@@ -112,8 +112,8 @@ await agent.ask("Read", dependencies={"database_pool": fake_pool})
 ### Capture stream events
 
 ```python
-from autogen.beta import MemoryStream
-from autogen.beta.events import ToolCallEvent
+from ag2 import MemoryStream
+from ag2.events import ToolCallEvent
 
 stream = MemoryStream()
 collected: list[ToolCallEvent] = []
@@ -134,9 +134,9 @@ For variation across multiple `ask()` calls, either:
 
 ## Going deeper
 
-- Source doc: `website/docs/beta/testing.mdx`.
+- Source doc: `website/docs/user-guide/testing.mdx`.
 - Test markers / async config — repo `pyproject.toml`. Use `@pytest.mark.asyncio` (the project uses pytest-asyncio).
-- Streams (for asserting events): `website/docs/beta/advanced/stream.mdx`.
+- Streams (for asserting events): `website/docs/user-guide/advanced/stream.mdx`.
 
 ## Common pitfalls
 

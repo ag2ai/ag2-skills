@@ -117,7 +117,7 @@ The hazard: an agent that calls `say(content="…")` **and then** also returns a
 `HumanClient` is the framework's first-class "participant that isn't an `Agent`": no LLM, no `NetworkPlugin`, no assembly policies. A person at a UI, a bridge to another system, a scripted "user" that seeds a workflow — all of these are a `HumanClient`. Register with `register_human` (not `register`, which now rejects `kind="human"` and points you here):
 
 ```python
-from autogen.beta.network import HumanClient, Passport
+from ag2.network import HumanClient, Passport
 
 user = await hc.register_human(Passport(name="user", kind="human"))   # resume=, rule=, auto_ack_invites= optional
 ```
@@ -173,7 +173,7 @@ The cheap way to keep most of that for free: **handle the events you care about 
 ### A gateway handler
 
 ```python
-from autogen.beta.network import Envelope, EV_TEXT, default_handler
+from ag2.network import Envelope, EV_TEXT, default_handler
 
 
 async def gateway_handler(envelope: Envelope) -> None:
@@ -195,7 +195,7 @@ client.on_envelope(gateway_handler)
 ### Selective override (fall back to default)
 
 ```python
-from autogen.beta.network import default_handler, EV_CHANNEL_INVITE
+from ag2.network import default_handler, EV_CHANNEL_INVITE
 
 
 async def selective_handler(envelope: Envelope) -> None:
@@ -246,7 +246,7 @@ That's the default handler's substantive path minus one line. Same trick works t
 If you want to *partially* replace the default handler's logic, the handler is decomposed into public hooks:
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     read_wal_until,
     resolve_view_policy,
     stamp_dependencies,
@@ -293,7 +293,7 @@ It takes the WAL slice this participant should see and returns a list of `BaseEv
 All honour `audience` — an envelope addressed only to `[bob]` doesn't appear in `carol`'s projection.
 
 ```python
-from autogen.beta.network import FullTranscript, WindowedSummary, NamedWindowedSummary
+from ag2.network import FullTranscript, WindowedSummary, NamedWindowedSummary
 
 view = WindowedSummary(recent_n=12)
 projected = await view.project(
@@ -308,7 +308,7 @@ projected = await view.project(
 ### Resolving the default
 
 ```python
-from autogen.beta.network import resolve_view_policy
+from ag2.network import resolve_view_policy
 
 policy = resolve_view_policy(client, metadata)
 ```
@@ -320,8 +320,8 @@ Reads the adapter manifest's `default_view_policy` and instantiates the matching
 Implement the protocol, give it a unique `name`, and use it:
 
 ```python
-from autogen.beta.events import BaseEvent, ModelMessage, ModelRequest, TextInput
-from autogen.beta.network import EV_TEXT, ViewPolicy
+from ag2.events import BaseEvent, ModelMessage, ModelRequest, TextInput
+from ag2.network import EV_TEXT, ViewPolicy
 
 
 class FromOneOnly(ViewPolicy):
@@ -354,7 +354,7 @@ class FromOneOnly(ViewPolicy):
         return out
 ```
 
-The `BaseEvent` types you emit shape how the LLM sees the history: `ModelRequest([TextInput(...)])` for "from the user," `ModelMessage(...)` for "from the assistant," etc. Render the envelope body via the supplied `render_envelope` callback (so the view stays adapter-neutral) rather than reaching into `event_data` directly. See `autogen.beta.events` for the full taxonomy.
+The `BaseEvent` types you emit shape how the LLM sees the history: `ModelRequest([TextInput(...)])` for "from the user," `ModelMessage(...)` for "from the assistant," etc. Render the envelope body via the supplied `render_envelope` callback (so the view stays adapter-neutral) rather than reaching into `event_data` directly. See `ag2.events` for the full taxonomy.
 
 ### Picking a view
 
@@ -396,7 +396,7 @@ Limitations: not for code review or numerical analysis.
 ### Parsing the frontmatter
 
 ```python
-from autogen.beta.network import parse_skill_frontmatter, ParsedSkill
+from ag2.network import parse_skill_frontmatter, ParsedSkill
 
 parsed: ParsedSkill = parse_skill_frontmatter(skill_md)
 print(parsed.frontmatter)  # {"title": "Research Assistant", "expertise": [...]}
@@ -408,7 +408,7 @@ print(parsed.body)         # the markdown body
 When no `skill_md` is provided, the hub generates one from the resume so peer lookup doesn't return empty handles:
 
 ```python
-from autogen.beta.network import render_fallback_skill
+from ag2.network import render_fallback_skill
 
 skill_md = render_fallback_skill(passport, resume)
 ```
@@ -486,7 +486,7 @@ The hub stamps `envelope_id` and `created_at` at admission time (and auto-increm
 - `[agent_id_1, agent_id_2, ...]` — only those participants see it.
 
 ```python
-from autogen.beta.network import visible_to
+from ag2.network import visible_to
 
 if visible_to(env, my_agent_id):
     process(env)
@@ -517,7 +517,7 @@ The default handler does this automatically when replying to an inbound `EV_TEXT
 `channel.send(text, audience=...)` wraps `EV_TEXT` for you. For custom event types build an `Envelope` and post it directly:
 
 ```python
-from autogen.beta.network import Envelope
+from ag2.network import Envelope
 
 envelope = Envelope(
     channel_id=channel.channel_id,
@@ -551,7 +551,7 @@ Envelopes appear in admission order (WAL list order — there is no per-envelope
 ## Quick reference — imports
 
 ```python
-from autogen.beta.network import (
+from ag2.network import (
     # Default handler + hooks (for selective override)
     default_handler,
     read_wal_until,

@@ -1,6 +1,6 @@
 ---
 name: ag2-telemetry
-description: Add OpenTelemetry traces to an AG2 beta `Agent` via `TelemetryMiddleware` (`autogen.beta.middleware.builtin`). Emits spans for the full turn, each LLM call, each tool execution, and each human-input request, following the OpenTelemetry GenAI semantic conventions. Compatible with any OTLP backend — Jaeger, Grafana Tempo, Datadog, Honeycomb, Langfuse. Use when the user wants production-grade traces, latency analysis, token-usage attribution, or to ship telemetry into an existing observability stack.
+description: Add OpenTelemetry traces to an AG2 `Agent` via `TelemetryMiddleware` (`ag2.middleware.builtin`). Emits spans for the full turn, each LLM call, each tool execution, and each human-input request, following the OpenTelemetry GenAI semantic conventions. Compatible with any OTLP backend — Jaeger, Grafana Tempo, Datadog, Honeycomb, Langfuse. Use when the user wants production-grade traces, latency analysis, token-usage attribution, or to ship telemetry into an existing observability stack.
 license: Apache-2.0
 ---
 
@@ -33,12 +33,12 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
 
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
-from autogen.beta.middleware.builtin import TelemetryMiddleware
+from ag2 import Agent
+from ag2.config import OpenAIConfig
+from ag2.middleware.builtin import TelemetryMiddleware
 
 # 1. Configure OpenTelemetry
-resource = Resource.create({"service.name": "ag2-beta-quickstart"})
+resource = Resource.create({"service.name": "ag2-quickstart"})
 tracer_provider = TracerProvider(resource=resource)
 tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 trace.set_tracer_provider(tracer_provider)
@@ -153,7 +153,7 @@ For container-orchestrated stacks, this repo includes a `tracing/` directory wit
 
 ## Going deeper
 
-- `website/docs/beta/telemetry.mdx` — full attribute table, configuration, example.
+- `website/docs/user-guide/telemetry.mdx` — full attribute table, configuration, example.
 - `tracing/` — Docker setup for local otel-collector + Tempo + Grafana.
 - For sibling middleware (logging, retry, history limits), see `ag2-middleware`.
 
@@ -164,4 +164,4 @@ For container-orchestrated stacks, this repo includes a `tracing/` directory wit
 - **Forgetting `trace.set_tracer_provider(...)`** — without it, `tracer_provider` you pass to the middleware is fine, but third-party libraries that auto-instrument may use a different provider.
 - **Token usage missing** — `gen_ai.usage.*` requires the provider client to surface usage in the response. Streaming providers may emit usage only at the end; if you don't see them, check the provider's response shape.
 - **Span hierarchy doesn't show parent-child** — your exporter or backend may need the OTLP/HTTP path enabled, not just OTLP/gRPC. Check both.
-- **Comparing to V1 tracing docs** — the semantic-attribute format is the same; only the agent instrumentation method differs (V1 uses `instrument_agent()` / `instrument_llm_wrapper()` / `instrument_pattern()`; beta uses `TelemetryMiddleware`).
+- **Comparing to AG2 Classic tracing docs** — the semantic-attribute format is the same; only the agent instrumentation method differs (AG2 Classic uses `instrument_agent()` / `instrument_llm_wrapper()` / `instrument_pattern()`; AG2 uses `TelemetryMiddleware`).

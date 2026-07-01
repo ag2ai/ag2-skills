@@ -1,12 +1,12 @@
 # AG2 Skills
 
-A collection of skills for [AG2](https://github.com/ag2ai/ag2) — an async, protocol-driven Python agent framework (`autogen.beta`). Skills are packaged instructions and optional helper scripts that extend an AI agent's capabilities.
+A collection of skills for [AG2](https://github.com/ag2ai/ag2) — an async, protocol-driven Python agent framework (`ag2`). Skills are packaged instructions and optional helper scripts that extend an AI agent's capabilities.
 
 Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 ## Compatibility
 
-These skills document the **AG2 Beta API** (the `autogen.beta` namespace) only. They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 0.13.4**). To see what has changed in the beta API upstream since that pin, run [`scripts/check_drift.sh`](scripts/check_drift.sh).
+These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 0.14.0**). To see what has changed in the AG2 API upstream since that pin, run [`scripts/check_drift.sh`](scripts/check_drift.sh).
 
 ## Installation
 
@@ -43,12 +43,12 @@ AG2's built-in `Skills` toolkit can load a local skills directory — see the `a
 
 ### ag2-overview
 
-Map of AG2 beta capabilities and which sibling skill to reach for. **Load this first** when the user mentions building with AG2 beta but the specific feature isn't yet clear.
+Map of AG2 capabilities and which sibling skill to reach for. **Load this first** when the user mentions building with AG2 but the specific feature isn't yet clear.
 
 **Use when:**
 
 - "I want to build an AG2 agent"
-- "How do I use autogen.beta?"
+- "How do I use ag2?"
 - The task touches AG2 but spans multiple features
 
 **Topics covered:**
@@ -58,11 +58,11 @@ Map of AG2 beta capabilities and which sibling skill to reach for. **Load this f
 
 ### ag2-quickstart
 
-Build a minimal AG2 beta `Agent` end to end — pick a model provider, set a prompt, call `agent.ask()`, then continue the conversation with `reply.ask()` (multi-turn).
+Build a minimal AG2 `Agent` end to end — pick a model provider, set a prompt, call `agent.ask()`, then continue the conversation with `reply.ask()` (multi-turn).
 
 **Use when:**
 
-- Starting a new AG2 beta project
+- Starting a new AG2 project
 - No working `Agent` yet
 - Need the multi-turn chaining pattern
 
@@ -392,7 +392,7 @@ Test AG2 agents and tools without hitting a real LLM provider.
 
 **Topics covered:**
 
-- `TestConfig(...)` from `autogen.beta.testing` — pass as agent's config or per-`ask`
+- `TestConfig(...)` from `ag2.testing` — pass as agent's config or per-`ask`
 - Mocking LLM responses
 - Injecting `ToolCallEvent`s to simulate tool execution
 - Asserting success / error paths

@@ -1,6 +1,6 @@
 ---
 name: ag2-structured-output
-description: Get a typed Python value back from an AG2 beta `Agent` instead of free text. Pass `response_schema=` (a Pydantic model, dataclass, primitive, union, `ResponseSchema`, or `@response_schema` validator) and read the parsed result via `await reply.content()`. Use when the user wants validated structured output, classification, extraction, or scoring. Covers `ResponseSchema`, `@response_schema`, `PromptedSchema` (for providers without native structured output), per-turn override, validation retries, and primitive embedding.
+description: Get a typed Python value back from an AG2 `Agent` instead of free text. Pass `response_schema=` (a Pydantic model, dataclass, primitive, union, `ResponseSchema`, or `@response_schema` validator) and read the parsed result via `await reply.content()`. Use when the user wants validated structured output, classification, extraction, or scoring. Covers `ResponseSchema`, `@response_schema`, `PromptedSchema` (for providers without native structured output), per-turn override, validation retries, and primitive embedding.
 license: Apache-2.0
 ---
 
@@ -18,8 +18,8 @@ license: Apache-2.0
 from pydantic import BaseModel, Field
 from typing import Annotated
 
-from autogen.beta import Agent
-from autogen.beta.config import OpenAIConfig
+from ag2 import Agent
+from ag2.config import OpenAIConfig
 
 class TicketTriage(BaseModel):
     category: Annotated[str, Field(description="e.g. billing, bug, account_access")]
@@ -58,7 +58,7 @@ print(triage.category, triage.urgency)
 Helps the provider treat the structured output as a named contract:
 
 ```python
-from autogen.beta import Agent, ResponseSchema
+from ag2 import Agent, ResponseSchema
 
 schema = ResponseSchema(int | str, name="ByteWidth", description="Number of bits in one byte.")
 agent = Agent("assistant", config=config, response_schema=schema)
@@ -69,7 +69,7 @@ agent = Agent("assistant", config=config, response_schema=schema)
 For clamping, regex cleanup, decoding wrapped JSON, or combining fields:
 
 ```python
-from autogen.beta import Agent, response_schema
+from ag2 import Agent, response_schema
 
 @response_schema
 def parse_rating(content: str) -> int:
@@ -84,7 +84,7 @@ Multi-parameter form synthesises a JSON object schema from the parameter names:
 ```python
 from typing import Annotated
 from pydantic import Field
-from autogen.beta import response_schema
+from ag2 import response_schema
 
 @response_schema
 def extract_listing(
@@ -114,7 +114,7 @@ async def fetch_and_validate(content: str) -> dict:
 Injects the JSON schema into the system prompt instead of using `response_format`:
 
 ```python
-from autogen.beta import Agent, PromptedSchema
+from ag2 import Agent, PromptedSchema
 
 agent = Agent("assistant", config=config, response_schema=PromptedSchema(int))
 ```
@@ -164,7 +164,7 @@ def parse_rating(value: int) -> int: ...
 ## Going deeper
 
 - Working starter: `assets/recipe_builder.py` (mirrors `code_examples/02`) — Pydantic model + `@tool` + `response_schema=`.
-- Full reference: `website/docs/beta/structured_output.mdx` — covers every schema type, multi-param `@response_schema`, `Field` constraints, `PromptedSchema`, retries, embedding semantics.
+- Full reference: `website/docs/user-guide/structured_output.mdx` — covers every schema type, multi-param `@response_schema`, `Field` constraints, `PromptedSchema`, retries, embedding semantics.
 
 ## Common pitfalls
 

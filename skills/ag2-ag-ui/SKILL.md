@@ -1,6 +1,6 @@
 ---
 name: ag2-ag-ui
-description: Expose an AG2 beta `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom React/Next.js, or any AG-UI client) can stream responses (text and reasoning), render tool calls, sync shared state, and track sub-task steps. Wraps the agent with `AGUIStream(agent)` and mounts it in FastAPI via `stream.dispatch(...)` or `stream.build_asgi()`. Use when the user wants a web frontend in front of an AG2 agent rather than a CLI / script.
+description: Expose an AG2 `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom React/Next.js, or any AG-UI client) can stream responses (text and reasoning), render tool calls, sync shared state, and track sub-task steps. Wraps the agent with `AGUIStream(agent)` and mounts it in FastAPI via `stream.dispatch(...)` or `stream.build_asgi()`. Use when the user wants a web frontend in front of an AG2 agent rather than a CLI / script.
 license: Apache-2.0
 ---
 
@@ -8,7 +8,7 @@ license: Apache-2.0
 
 ## When to use
 
-- The user is building a web UI (React / Next.js / anything HTTP+SSE) that should talk to an AG2 beta agent.
+- The user is building a web UI (React / Next.js / anything HTTP+SSE) that should talk to an AG2 agent.
 - They want streaming text, reasoning, tool-call rendering, shared state sync, or sub-task step tracking surfaced to the frontend with a standard protocol — not a custom REST/WebSocket contract.
 - They're using or considering CopilotKit (the recommended React client).
 
@@ -41,9 +41,9 @@ pip install "ag2[ag-ui]"
 from fastapi import FastAPI, Header
 from fastapi.responses import StreamingResponse
 
-from autogen.beta import Agent
-from autogen.beta.ag_ui import AGUIStream, RunAgentInput
-from autogen.beta.config import OpenAIConfig
+from ag2 import Agent
+from ag2.ag_ui import AGUIStream, RunAgentInput
+from ag2.config import OpenAIConfig
 
 agent = Agent(
     name="support_bot",
@@ -80,7 +80,7 @@ curl -N -X POST http://127.0.0.1:8000/chat \
 If you don't need custom auth / middleware, mount the ASGI endpoint directly:
 
 ```python
-from autogen.beta.ag_ui import AGUIStream
+from ag2.ag_ui import AGUIStream
 from fastapi import FastAPI
 
 app = FastAPI()
@@ -160,17 +160,17 @@ Render chat (`<CopilotChat />`), and use `useCopilotAction({...})` in client com
 
 ## Going deeper
 
-- `website/docs/beta/ag-ui/index.mdx` — `AGUIStream`, supported events, basic server.
-- `website/docs/beta/ag-ui/copilotkit-quickstart.mdx` — full React + CopilotKit walkthrough (file layout, route, layout, chat component, weather-card example).
+- `website/docs/user-guide/ag-ui/index.mdx` — `AGUIStream`, supported events, basic server.
+- `website/docs/user-guide/ag-ui/copilotkit-quickstart.mdx` — full React + CopilotKit walkthrough (file layout, route, layout, chat component, weather-card example).
 - AG-UI protocol: https://docs.ag-ui.com/introduction
 - Reference starter: https://github.com/ag2ai/ag2-copilotkit-starter
 - For protocol-level testing: AG2 Dojo profile https://dojo.ag-ui.com/ag2/feature/agentic_chat
 
 ## Common pitfalls
 
-- **Missing `ag-ui` extra** — `pip install "ag2[ag-ui]"` is required; without it `from autogen.beta.ag_ui import AGUIStream` will fail.
+- **Missing `ag-ui` extra** — `pip install "ag2[ag-ui]"` is required; without it `from ag2.ag_ui import AGUIStream` will fail.
 - **CORS blocked** — frontend can't hit the backend in dev. Add `CORSMiddleware` to the FastAPI app for the dev origin.
 - **No streaming output** — proxy or `Content-Type` issue. Test with raw `curl -N` first to isolate.
 - **Tool UI not rendering** — tool name on the React side (`useCopilotAction({ name: "..." })`) doesn't exactly match the backend `@tool` name.
 - **Putting the endpoint behind a SSE-incompatible proxy** — many proxies buffer event-stream responses by default. Disable buffering on the route.
-- **Trying to use `AGUIStream` with classic `ConversableAgent`** — the description here covers `autogen.beta.Agent`. Classic AG2 agents can be exposed differently; check the AG2 docs for that path.
+- **Trying to use `AGUIStream` with classic `ConversableAgent`** — the description here covers `ag2.Agent`. Classic AG2 agents can be exposed differently; check the AG2 docs for that path.
