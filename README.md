@@ -468,6 +468,23 @@ Expose an AG2 `Agent` over the Agent-to-Agent (A2A) protocol so any A2A-complian
 - Consuming a remote A2A agent — `A2AConfig(card_url=...)`
 - Security schemes (`bearer_scheme` / `api_key_scheme` / `oauth2_scheme` / `require`), in-process `testing` helpers
 
+### ag2-acp
+
+Drive external CLI coding agents — Claude Code, Codex, OpenCode — as first-class AG2 `Agent`s over the Agent Client Protocol (ACP).
+
+**Use when:**
+
+- Orchestrating or observing CLI coding agents from Python (refactoring pipelines, agent-driven code review)
+- Gating a coding agent's sensitive actions with `permission_policy` (`ask` / `auto` / `deny`) or a human in the loop
+
+**Topics covered:**
+
+- `ClaudeCodeConfig` / `CodexConfig` / `OpenCodeConfig` (`ACPConfig` presets); one `ask()` = one ACP prompt turn
+- Observing the stream: `ModelReasoning`, `BuiltinToolCallEvent`, `ACPPlan` / `ACPModeChange` / `ACPAvailableCommands`
+- Permission policies + HITL, `fs_root` confinement, timeouts, lifecycle (`aclose()`), in-process testing via `fake_acp_config`
+
+**See also:** `ag2-a2a` / `ag2-mcp` for exposing AG2 agents *to* other systems; `ag2-hitl` for the human-approval plumbing `permission_policy="ask"` uses.
+
 ### ag2-live
 
 Build realtime voice / live-audio agents — bidirectional speech in, synthesized speech out.
