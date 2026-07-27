@@ -1,0 +1,30 @@
+name: Validate skill zips
+
+# Ensures every skills/<name>.zip stays in sync with its skills/<name>/ source
+# directory. Pure stdlib check — no dependencies, no AG2 install required.
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+      - "scripts/validate_zips.py"
+      - ".github/workflows/validate-skill-zips.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/validate_zips.py"
+      - ".github/workflows/validate-skill-zips.yml"
+
+jobs:
+  validate-zips:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate zips match sources
+        run: python3 scripts/validate_zips.py
