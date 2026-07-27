@@ -1,5 +1,5 @@
 {
-  "$comment": "Source of truth for the upstream AG2 version these skills were verified against. To see what changed upstream since, diff the pinned commit: `git -C <ag2-checkout> diff ag2_commit..main -- ag2` (see scripts/check_drift.sh).",
+  "$comment": "Source of truth for the upstream AG2 version these skills were verified against. To see what changed upstream since, diff the pinned commit: `git -C <ag2-checkout> diff ag2_commit..main -- ag2`.",
   "framework": "ag2",
   "scope": "ag2",
   "scope_note": "These skills document the AG2 API (the `ag2` namespace) ONLY. They do not cover AG2 Classic (the `autogen` namespace).",
