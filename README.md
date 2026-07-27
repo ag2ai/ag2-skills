@@ -6,7 +6,7 @@ Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 ## Compatibility
 
-These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 0.14.0**). To see what has changed in the AG2 API upstream since that pin, run [`scripts/check_drift.sh`](scripts/check_drift.sh).
+These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.0.0**). To see what has changed in the AG2 API upstream since that pin, run [`scripts/check_drift.sh`](scripts/check_drift.sh).
 
 ## Installation
 
