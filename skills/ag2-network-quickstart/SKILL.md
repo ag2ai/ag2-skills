@@ -2,6 +2,8 @@
 name: ag2-network-quickstart
 description: Build a multi-agent AG2 network — load whenever two or more `Agent`s (or an agent and a human/UI) need to interact; the network is the standard multi-agent pattern in `ag2`. Covers `Hub.open`, `LocalLink`, `HubClient.register` / `register_human`, `AgentClient`, `HumanClient`, `Passport`, `Resume`, channel lifecycle (PENDING → ACTIVE → CLOSING → CLOSED), the 2-party adapters `consulting` (strict 1Q1R) and `conversation` (free-form), `channel.send` / audience, `wait_for_channel_event`, reading the transcript from `hub.read_wal` (`EV_TEXT` text, `EV_PACKET` body), `hub.name_for`, close routes (`channel.close`, `ChannelInject` tool, TTL). Entry point — routes to `ag2-network-discussion` (N-party round-robin), `ag2-network-workflow` (`TransitionGraph` orchestration / GroupChat migration), `ag2-network-governance` (rules, expectations, audit), `ag2-network-tools-and-views` (custom handlers, views, peer discovery, `say`). One agent fanning out its own sub-tasks is `ag2-subagent-delegation` instead.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 Network — Quickstart

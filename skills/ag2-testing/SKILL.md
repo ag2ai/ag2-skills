@@ -2,6 +2,8 @@
 name: ag2-testing
 description: Test AG2 agents and tools without hitting a real LLM provider. Pass `TestConfig(...)` from `ag2.testing` as the agent's config (or per-`ask`) to script LLM turns — text, `ToolCallEvent(name=..., arguments=<JSON string>)`, parallel tool calls, provider exceptions — and wrap it in `TrackingConfig` to assert exactly what the model received (`config.calls[i].messages / prompt / tools / variables`). Covers pytest-asyncio setup, capturing `ToolCallEvent` / `ToolResultEvent` / `ToolErrorEvent` on a `MemoryStream`, `raise_tool_errors=False`, `ToolNotFoundError`, `Depends` / `Inject` overrides, and the multi-turn cursor rules. Use when the user is writing pytest tests for an Agent, Tool, middleware or response schema. For writing tools see `ag2-add-custom-tool`; for LLM-graded evals see `ag2-evaluation`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Testing agents and tools

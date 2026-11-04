@@ -2,6 +2,8 @@
 name: ag2-a2a
 description: "Serve an AG2 `Agent` over the Agent-to-Agent (A2A) protocol (a2a-sdk >= 1.3) and call remote A2A agents. Server: `A2AServer(agent)` then `build_jsonrpc(url=)` / `build_rest(url=)` (Starlette ASGI apps for uvicorn) or `build_grpc(bind=, grpc_url=, server_credentials=)`, publishing an `AgentCard` (`build_card`) at `/.well-known/agent-card.json`. Client: `Agent(config=A2AConfig(card_url=...))`, multi-turn `reply.ask`, client-side tools, `as_tool()`. Covers card signing (`card_signer=` / `card_signature_verifier=`), gRPC TLS (`secure_grpc_channel_factory`), security schemes (`bearer_scheme`/`api_key_scheme`/`oauth2_scheme`/`require`), push notifications with `push_url_validator`, multi-replica `VersionedTaskStore`+`event_stream`, extensions, `validate_input_modes`, tasks/push helpers, in-process `ag2.a2a.testing` factories. Use for networked agent interop. For MCP see `ag2-mcp`; IDE agents `ag2-acp`; web frontends `ag2-ag-ui`; in-process multi-agent `ag2-network-quickstart`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # A2A (Agent-to-Agent) integration

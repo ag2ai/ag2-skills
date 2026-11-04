@@ -8,6 +8,8 @@ Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.3.0**). APIs deprecated in 1.3 and removed in 1.4 (`OpenAIConfig` as Chat Completions, `Agent(knowledge=)`, `Agent(assembly=)`, `TaskConfig`, `Agent.task()`, `AnthropicConfig(temperature=)` and other Anthropic sampling params) are not taught; `ag2-overview` lists their replacements.
 
+Each `SKILL.md` records the AG2 version it targets in `metadata.ag2_version`. Every AG2 bump is published as a tagged [GitHub Release](https://github.com/ag2ai/ag2-skills/releases) named `ag2-<version>` (e.g. `ag2-1.3.0`) with all skill zips attached — install from an older release to match an older AG2.
+
 ## Installation
 
 Install the whole collection with the [`skills`](https://skills.sh) CLI:

@@ -2,6 +2,8 @@
 name: ag2-ag-ui
 description: "Expose an AG2 `Agent` over the AG-UI 1.0 protocol (`ag-ui-protocol>=1.0`) so a web frontend (CopilotKit, `@ag-ui/client` HttpAgent, custom React/Next.js) or a CopilotKit Channel (Slack etc.) can stream text, render backend and frontend tool calls, sync shared state, see delegations, and answer human-in-the-loop interrupts. Covers `AGUIStream(agent)` with `stream.dispatch(...)` in FastAPI or `stream.build_asgi()` as a Starlette route, `read_run_input` (tolerant body parsing), `stream.capabilities()`, the `RunAgentInput` body (`threadId`/`runId`/`messages`/`state`/`context`/`tools`/`resume`), emitted events (`TEXT_MESSAGE_CHUNK`, `TEXT_MESSAGE_START/CONTENT/END`, `TOOL_CALL_*`, `STATE_SNAPSHOT`, `SUBAGENT_*`, `RUN_FINISHED` outcomes), interrupts/`resume`, `Retention`, `require_resume_proof`. For A2A interop see `ag2-a2a`; MCP `ag2-mcp`; IDE agents `ag2-acp`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG-UI integration (AG-UI 1.0)

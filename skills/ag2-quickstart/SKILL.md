@@ -2,6 +2,8 @@
 name: ag2-quickstart
 description: Build a minimal AG2 `Agent` end to end — pick a model provider config, set a prompt, call `agent.ask()`, read `reply.body`, then continue the conversation with `reply.ask()` (multi-turn). Use when the user is starting a new AG2 project, has no working `Agent` yet, needs the multi-turn chaining pattern, or asks which provider config to use. Covers `OpenAIResponsesConfig` (OpenAI default), `OpenAICompletionsConfig` (Chat Completions and OpenAI-compatible `base_url` endpoints such as vLLM / LM Studio), `AnthropicConfig`, `GeminiConfig`, `VertexAIConfig`, `BedrockConfig`, `MistralConfig`, `XAIConfig`, `ZAIConfig`, `OllamaConfig`, `DashScopeConfig`, `config.copy(...)`, per-ask `config=`, and env-var fallback for API keys. For tools see `ag2-add-custom-tool`; typed output `ag2-structured-output`; images/files `ag2-multimodal-input`; tests `ag2-testing`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Quickstart: build your first AG2 Agent

@@ -2,6 +2,8 @@
 name: ag2-network-tools-and-views
 description: "Agent-side AG2 network surface: the `NetworkPlugin` LLM tools (`delegate`, `peers`, `channels`, `tasks`, `context`) and the adapter-owned `say`, tool injects (`ChannelInject`, `AgentClientInject`, `HubInject`, `TaskInject`), replacing the notify handler via `agent_client.on_envelope(...)` + `default_handler` and hooks (`read_wal_until`, `resolve_view_policy`, `stamp_dependencies`, `ensure_parts`), non-LLM participants (`HumanClient`, `register_human`), `ViewPolicy` (`FullTranscript`, `WindowedSummary`, `NamedTranscript`, `NamedWindowedSummary`, custom views over `Input` parts), skill markdown (`skill_md=`, `parse_skill_frontmatter`, `hub.set_skill`), and the `Envelope` wire format (`EV_*`, `audience`, `visible_to`, `Priority`, `causation_id`, custom events via `send_envelope`). Use for gateways, headless workers, filtered history, peer discovery. Load after `ag2-network-quickstart`; hub-side rules/audit/track records live in `ag2-network-governance`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 Network — Tools, Views & Custom Handlers
