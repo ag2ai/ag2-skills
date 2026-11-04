@@ -87,7 +87,7 @@ Register via `middleware=[Middleware(AssemblerMiddleware, policies=[...]), Middl
 
 ## Migration (deprecated in 1.3, removed in 1.4)
 
-`Agent(knowledge=KnowledgeConfig(...))` → `plugins=[KnowledgePlugin(store, ...)]` (same kwargs). `Agent(assembly=[...])` → `middleware=[Middleware(AssemblerMiddleware, policies=[...])]`. Mixing `knowledge=` with a `KnowledgePlugin` raises `ValueError`.
+`Agent(knowledge=KnowledgeConfig(...))` → `plugins=[KnowledgePlugin(store, ...)]` (same kwargs). `Agent(assembly=[...])` → `middleware=[Middleware(AssemblerMiddleware, policies=[...]), Middleware(HaltCheckMiddleware)]` (the old form added the halt check automatically; drop it and FATAL alerts stop halting). Mixing `knowledge=` with a `KnowledgePlugin` raises `ValueError`.
 
 ## Reference
 

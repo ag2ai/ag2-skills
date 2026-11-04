@@ -16,6 +16,14 @@ pip install "ag2[acp]"                                   # agent-client-protocol
 pip install "agent-client-protocol[http]"                # only for ACPRemoteConfig (HTTP / WebSocket)
 ```
 
+## When to use
+
+- Orchestrate CLI coding agents (Claude Code, Codex, OpenCode, Kilo Code) from Python: headless refactors, manager → coder delegation, batch code-mods.
+- Watch a coding agent's thoughts, tool calls and plans live on the AG2 event stream, gate its file writes / shell commands with a permission policy, or confine it to a workspace (`fs_root`).
+- Serve your own AG2 agent to editors (Zed, JetBrains, VS Code) over ACP.
+
+Exposing an agent to non-editor systems → `ag2-a2a` or `ag2-mcp`. Human input behind `permission_policy="ask"` → `ag2-hitl`.
+
 ## Client: drive a CLI coding agent
 
 ```python
@@ -111,6 +119,6 @@ Zed `settings.json`: `{"agent_servers": {"workie": {"type": "custom", "command":
 
 ## Reference
 
-- `references/test_snippets.py` — in-process tests: scripted CLI agent, served agent, auth gate, host `hitl_hook` (no keys).
-- `references/serve_stdio.py` + `references/drive_served_agent.py` — real round trip: AG2 `ACPConfig` drives an AG2 `ACPAgent` subprocess (needs `OPENAI_API_KEY`).
+- `scripts/test_snippets.py` — in-process tests: scripted CLI agent, served agent, auth gate, host `hitl_hook` (no keys).
+- `scripts/serve_stdio.py` + `scripts/drive_served_agent.py` — real round trip: AG2 `ACPConfig` drives an AG2 `ACPAgent` subprocess (needs `OPENAI_API_KEY`).
 - Upstream: `website/docs/user-guide/acp/{client,server}.mdx`, `examples/acp/server_stdio.py`; source `ag2/acp/`.

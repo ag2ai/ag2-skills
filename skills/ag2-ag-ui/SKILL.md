@@ -12,6 +12,14 @@ license: Apache-2.0
 pip install "ag2[ag-ui,openai]" fastapi uvicorn
 ```
 
+## When to use
+
+- A web UI (React / Next.js / anything HTTP + SSE) should talk to an AG2 agent.
+- You want streamed text, reasoning, tool-call rendering, shared state or sub-task steps surfaced to the frontend through a standard protocol.
+- You use or consider CopilotKit as the React client.
+
+For a narrow app-specific API whose contract you own end to end, write a plain endpoint instead.
+
 ## Server (FastAPI, manual dispatch — recommended)
 
 ```python title="run_ag_ui.py"
@@ -120,6 +128,6 @@ Ops: held turns live in one process → **route by `threadId` (sticky)**; restar
 
 ## Reference
 
-- `references/serve_and_probe.py` — FastAPI + uvicorn in-process; prints real event sequences for plain run, backend tool, interrupt + resume (needs `OPENAI_API_KEY`).
+- `scripts/serve_and_probe.py` — FastAPI + uvicorn in-process; prints real event sequences for plain run, backend tool, interrupt + resume (needs `OPENAI_API_KEY`).
 - `references/copilotkit.md` — CopilotKit route/layout snippets, auth/production checklist.
 - Upstream: `website/docs/user-guide/ag-ui/{overview,backend-deepdive,copilotkit-quickstart,channels}.mdx`; `examples/ag_ui/human_input.py`; source `ag2/ag_ui/`.

@@ -6,6 +6,13 @@ license: Apache-2.0
 
 # Voice and realtime agents (`ag2.live`)
 
+## When to use
+
+- A **talking agent**: mic in, voice out, low latency (OpenAI Realtime, Gemini Live), optionally with live transcription.
+- A **voice pipeline** over an existing text `Agent`: transcribe → run the agent → speak the reply, or just add TTS to a text agent.
+
+A recorded audio file as one input to a text agent → `ag2-multimodal-input` (`AudioInput`). Real sessions need a provider key plus a mic/speaker; everything here constructs without hardware, and `scripts/headless_voice_check.py` exercises a session with recorded audio.
+
 ## Pick a pattern
 
 | Pattern | Build with | Latency | Use when |

@@ -8,6 +8,14 @@ license: Apache-2.0
 
 Expose an AG2 `Agent` as a standard A2A service (JSON-RPC / REST / gRPC + a discoverable `AgentCard`), or let an AG2 `Agent` call any remote A2A agent by using `A2AConfig` as its model config.
 
+## When to use
+
+- Make an AG2 agent a networked service that **non-AG2** A2A clients can discover (`AgentCard` at `/.well-known/agent-card.json`) and call over JSON-RPC, REST or gRPC.
+- Declare auth schemes, push notifications or multi-tenancy on the card, or sign the card.
+- Let an AG2 agent **call** a remote A2A agent as if it were a model (`A2AConfig` as its `config`).
+
+Web frontend → `ag2-ag-ui`. AG2 agents talking inside one process/cluster → `ag2-network-quickstart`.
+
 ## Install
 
 ```bash
@@ -71,7 +79,7 @@ async def main():
         await task
 ```
 
-Full runnable version (signed card, multi-turn, client tool): `references/serve_and_consume.py`.
+Full runnable version (signed card, multi-turn, client tool): `scripts/serve_and_consume.py`.
 
 ## Card signing (opt-in, both halves independent)
 
@@ -128,6 +136,6 @@ assert (await remote.ask("Weather?")).body == "It is sunny."
 ## Reference
 
 - `references/a2a_reference.md` — `build_card` options, security schemes, push/tasks helpers, multi-replica, extensions, `validate_input_modes`, card caching, errors.
-- `references/test_snippets.py` — in-process tests (JSON-RPC, REST, card, security, push validator, signing) — no keys.
-- `references/serve_and_consume.py` — uvicorn in one process, signed card, multi-turn, client tool (needs `OPENAI_API_KEY`).
+- `scripts/test_snippets.py` — in-process tests (JSON-RPC, REST, card, security, push validator, signing) — no keys.
+- `scripts/serve_and_consume.py` — uvicorn in one process, signed card, multi-turn, client tool (needs `OPENAI_API_KEY`).
 - Upstream: `website/docs/user-guide/a2a/{overview,server,client,card_signing,tasks_and_push,advanced}.mdx`; source `ag2/a2a/`.

@@ -48,7 +48,7 @@ agent = Agent(
 
 ### `MCPStdioServerConfig` (keyword-only)
 
-`command` (required), `args=[]`, `env=None` (inherits when unset), `cwd=None`, `encoding="utf-8"`, `protocol_mode="legacy"`, plus `server_label` / `description` / `allowed_tools` / `blocked_tools` / `tool_name_prefix`.
+`command` (required), `args=[]`, `env=None` (does **not** inherit your environment — the mcp SDK passes only a minimal safe set such as `HOME`/`PATH`/`USER`, so API keys are missing; pass `env=dict(os.environ)` or the specific keys), `cwd=None`, `encoding="utf-8"`, `protocol_mode="legacy"`, plus `server_label` / `description` / `allowed_tools` / `blocked_tools` / `tool_name_prefix`.
 
 Every field except `connection_timeout`, `max_sse_event_size`, `proxy`, `verify`, `encoding`, `protocol_mode` accepts `Variable("name")` — per-conversation tokens or tenant prefixes resolved from `context.variables` at discovery time:
 

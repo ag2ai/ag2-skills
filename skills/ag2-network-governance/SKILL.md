@@ -45,8 +45,8 @@ Violations raise from `open(...)` / `send(...)`: `AccessDeniedError` (access, de
 from ag2.network import BaseHubArbiter, Deny, RuleBasedArbiter
 
 
-class ScopedArbiter(BaseHubArbiter):  # allows every gate you don't override -> re-delegate the
-    def __init__(self, inner):        # others (_channel_open/_inbox/_dispatch) to keep rule checks
+class ScopedArbiter(BaseHubArbiter):  # allows every gate you don't override -> re-delegate the others
+    def __init__(self, inner):        # (authorize_register/_channel_open/_inbox/_dispatch) to keep rule checks
         self._inner = inner
 
     async def authorize_send(self, envelope, sender, sender_rule, recipients):

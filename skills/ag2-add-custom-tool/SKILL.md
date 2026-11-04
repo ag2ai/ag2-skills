@@ -31,7 +31,7 @@ reply = await agent.ask("Cost to ship 2kg to Berlin?")
 print(reply.body)
 ```
 
-`@tool` builds the LLM-facing schema from the signature, type hints and docstring. **The docstring is the description the LLM sees.** Plain undecorated functions in `tools=[...]` are wrapped automatically; `@agent.tool` attaches to an existing agent. Tool names must be unique per turn — a later tool with the same name replaces the earlier one (with a warning).
+`@tool` builds the LLM-facing schema from the signature, type hints and docstring. **The docstring is the description the LLM sees.** Plain undecorated functions in `Agent(tools=[...])` are wrapped automatically, but **not** in per-call `agent.ask(..., tools=[...])` — there a plain function raises `AttributeError` in 1.3.0, so decorate it with `@tool` first; `@agent.tool` attaches to an existing agent. Tool names must be unique per turn — a later tool with the same name replaces the earlier one (with a warning).
 
 ## Sync, async, timeouts
 

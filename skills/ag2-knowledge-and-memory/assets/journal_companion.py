@@ -39,7 +39,7 @@ def section(title: str) -> None:
 
 
 async def main() -> None:
-    config = GeminiConfig(model="gemini-2.5-flash", temperature=0)
+    config = GeminiConfig(model="gemini-3.6-flash", temperature=0)
     workdir = Path(tempfile.mkdtemp(prefix="journal-companion-"))
 
     try:

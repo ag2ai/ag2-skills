@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """In-process checks for ag2.a2a — no sockets, no API keys.
 
-Run:  python references/test_snippets.py
+Run:  python scripts/test_snippets.py
 Needs: pip install "ag2[a2a]" "a2a-sdk[http-server,signing]" cryptography
 """
 

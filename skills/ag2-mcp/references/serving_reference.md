@@ -1,6 +1,6 @@
 # ag2.mcp serving reference (AG2 1.3.0, mcp SDK 2.x)
 
-Everything here is verified by `test_server.py` / `serve_and_consume.py` in this folder unless marked otherwise.
+Everything here is verified by `../scripts/test_snippets.py` / `../scripts/serve_and_consume.py` unless marked otherwise.
 
 ## `MCPServer(agent, **options)`
 
@@ -68,7 +68,7 @@ async def whoami(ctx: MCPRequestContext) -> str:   # live mcp ServerRequestConte
 ```
 
 - Return types: `str`, `ContentBlock`(s), mapping (→ `structuredContent`, no schema), pydantic model / dataclass (→ `outputSchema` + `structuredContent`, text from `__str__`), or `mcp.types.CallToolResult`. Anything else (e.g. `int`) → `TypeError` at call time.
-- A resolver may return `Elicit(message, Model)`, `Sample(messages, max_tokens=...)` or `ListRoots()`; the body runs once all are satisfied; the resolver re-runs each round (make it idempotent). Resolvers ask regardless of `elicitation_policy`.
+- A resolver may return `Elicit(message, Model)`, `Sample(messages, max_tokens=...)` or `ListRoots()` (the last two use MCP sampling/roots, deprecated by MCP revision 2026-07-28 — prefer `Elicit` or tool arguments); the body runs once all are satisfied; the resolver re-runs each round (make it idempotent). Resolvers ask regardless of `elicitation_policy`.
 - `Variable`, `Depends`/`Inject` and `AskContext.dependencies` resolve inside `@mcp_tool`, resource readers and app content providers.
 
 ## Prompts and resources
@@ -152,4 +152,4 @@ On 2026-07-28 clients a question comes back as the call **result** (`InputRequir
 
 ## Client side quick facts (`ag2.tools`)
 
-`MCPToolkit(server, *, middleware=(), answering=None)`; `server` = URL | `MCPServerConfig(server_url, authorization_token, headers, connection_timeout=30.0, max_sse_event_size=1 MiB, proxy, verify, protocol_mode="legacy"|"auto", server_label, description, allowed_tools, blocked_tools, tool_name_prefix)` | `MCPStdioServerConfig(command, args, env, cwd, encoding, protocol_mode, ...)` (pass `env=dict(os.environ)` to forward API keys — unset `env` gives the subprocess only the mcp SDK minimal environment). Most fields accept a `Variable`. `MCPAnswerPolicy(elicitation="decline", sampling=False, roots=(), max_rounds=10)`; elicitation answers go through the agent's `hitl_hook` and only single-field forms are answerable. A remote tool never replaces a same-named local tool (dropped with a warning) — use `tool_name_prefix`.
+`MCPToolkit(server, *, middleware=(), answering=None)`; `server` = URL | `MCPServerConfig(server_url, authorization_token, headers, connection_timeout=30.0, max_sse_event_size=1 MiB, proxy, verify, protocol_mode="legacy"|"auto", server_label, description, allowed_tools, blocked_tools, tool_name_prefix)` | `MCPStdioServerConfig(command, args, env, cwd, encoding, protocol_mode, ...)` (pass `env=dict(os.environ)` to forward API keys — unset `env` gives the subprocess only the mcp SDK minimal environment). Most fields accept a `Variable`. `MCPAnswerPolicy(elicitation="decline", sampling=False, roots=(), max_rounds=10)` (`sampling`/`roots` are deprecated by MCP revision 2026-07-28; leave them off); elicitation answers go through the agent's `hitl_hook` and only single-field forms are answerable. A remote tool never replaces a same-named local tool (dropped with a warning) — use `tool_name_prefix`.

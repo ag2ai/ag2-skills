@@ -1,9 +1,10 @@
+#!/usr/bin/env python3
 """Serve an AG2 agent over streamable HTTP and consume it two ways, in one process.
 
 1. `mcp.client.Client` (raw MCP SDK) threading a conversation handle.
 2. Another AG2 Agent using the server's tools through `MCPToolkit` (client side).
 
-Run:  OPENAI_API_KEY=... python references/serve_and_consume.py
+Run:  OPENAI_API_KEY=... python scripts/serve_and_consume.py
 Needs: pip install "ag2[mcp,openai]" uvicorn
 """
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Serve an AG2 agent over ACP stdio (for Zed / JetBrains / any ACP client, or ACPConfig).
 
 The CLIENT launches this file. stdout is the protocol wire: never print() here.

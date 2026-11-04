@@ -36,7 +36,7 @@ board = await run_variants(
     variants=Variants(
         {
             "gpt-4.1-mini": Agent("a", prompt="Answer helpfully.", config=OpenAIResponsesConfig("gpt-4.1-mini")),
-            "flash":        Agent("a", prompt="Answer helpfully.", config=GeminiConfig("gemini-2.5-flash")),
+            "flash":        Agent("a", prompt="Answer helpfully.", config=GeminiConfig("gemini-3.6-flash")),
         },
         axis="config",                  # label for what was varied (used in summary)
     ),

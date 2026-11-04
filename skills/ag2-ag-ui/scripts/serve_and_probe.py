@@ -1,9 +1,10 @@
+#!/usr/bin/env python3
 """Serve an AG2 agent over AG-UI 1.0 (FastAPI + uvicorn, one process) and probe it with httpx.
 
 Prints the event types actually emitted for: a plain run, a backend tool call, and a
 human-input interrupt answered by a second run on the same thread (resume).
 
-Run:  OPENAI_API_KEY=... python references/serve_and_probe.py
+Run:  OPENAI_API_KEY=... python scripts/serve_and_probe.py
 Needs: pip install "ag2[ag-ui,openai]" fastapi uvicorn httpx
 """
 

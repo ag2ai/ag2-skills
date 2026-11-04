@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Exercise an AG2 voice session end to end without a microphone or speaker.
 
 Synthesizes a spoken question with OpenAI TTS, streams it into a running
@@ -13,6 +14,7 @@ Requires: pip install "ag2[openai]"
 """
 
 import asyncio
+import json
 import sys
 
 from ag2.config import OpenAIResponsesConfig
@@ -87,9 +89,8 @@ async def main(question: str) -> None:
         await asyncio.sleep(3)  # let the TTS of the last sentence land
 
     usage = await LiveAgent.usage_report(context)
-    for key, value in seen.items():
-        print(f"{key:12}: {value}")
-    print(f"{'tokens':12}: {usage.total.total_tokens}")
+    # stdout is machine-readable: one JSON object
+    print(json.dumps({**seen, "tokens": usage.total.total_tokens}, default=str))
 
 
 if __name__ == "__main__":

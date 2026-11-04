@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """In-process tests for an ag2.mcp.MCPServer — no sockets, no API keys.
 
-Run:  python references/test_server.py   (needs `pip install "ag2[mcp]"`)
+Run:  python scripts/test_snippets.py   (needs `pip install "ag2[mcp]"`)
 
 Covers: the `ask` tool, the conversation handle, prompts, resources, a
 deterministic `@mcp_tool` reading `MCPRequestContext`, a `Resolve(Elicit)`

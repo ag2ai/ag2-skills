@@ -1,9 +1,10 @@
+#!/usr/bin/env python3
 """Serve an AG2 agent over A2A JSON-RPC with uvicorn and call it from another AG2 agent — one process.
 
 Shows: in-process uvicorn startup/shutdown, signed AgentCard + client-side verification,
 multi-turn via reply.ask, a client-side (local) tool forwarded from the server's LLM.
 
-Run:  OPENAI_API_KEY=... python references/serve_and_consume.py
+Run:  OPENAI_API_KEY=... python scripts/serve_and_consume.py
 Needs: pip install "ag2[a2a,openai]" "a2a-sdk[http-server,signing]" uvicorn cryptography
 """
 

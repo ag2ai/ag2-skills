@@ -8,6 +8,10 @@ license: Apache-2.0
 
 AG2 (`ag2`) is an async, protocol-driven agent framework. These skills target **ag2 1.3**. Full reference docs live under `website/docs/user-guide/` in the ag2 repo. This skill is the index: pick the sibling skill below, then load its `SKILL.md`.
 
+## When to use
+
+Read this first when a request mentions AG2 / `ag2` or building agents with it and you don't yet know which feature is needed. Pick the sibling skill from the tables below, then load its `SKILL.md`.
+
 ## Before you start
 
 1. **Install the provider extra** — `pip install "ag2[openai]"`, `ag2[anthropic]`, `ag2[gemini]`, … Without it the `*Config` raises `ImportError: ... requires optional dependencies`. Feature extras are separate (e.g. `ag2[tracing]` for evaluation/telemetry, `ag2[ag-ui]`, `ag2[a2a]`, `ag2[redis]`); each skill states its own. Run the install before delivering code, or state the exact command if you can't.

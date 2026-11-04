@@ -15,8 +15,14 @@ Two opposite directions — pick the right one:
 | the LLM provider to connect to a remote MCP URL itself | `MCPServerTool` — see `ag2-use-builtin-tools` |
 
 ```bash
-pip install "ag2[mcp]"   # mcp>=2.0; without it ag2.mcp names are stubs that raise on use
+pip install "ag2[mcp]"   # mcp>=2.3,<3; without it ag2.mcp names are stubs that raise on use
 ```
+
+## When to use
+
+- Expose an AG2 agent to MCP clients (Claude Desktop, Cursor, IDEs, the MCP Inspector) as an `ask` tool, plus deterministic tools, prompts and resources.
+- Multi-turn history per client session, OAuth2-protected HTTP, or per-request context injection.
+- Let your agent call an external MCP server's tools that AG2 executes (`MCPToolkit`).
 
 ## Serve over stdio (Claude Desktop, Cursor, Inspector)
 
@@ -84,7 +90,7 @@ async with Client("http://127.0.0.1:8000/mcp") as client:
 
 ## Questions back to the caller (elicitation)
 
-A tool inside the served agent calling `await ctx.input("...")` (`ctx: Context`) is forwarded to the calling client's human when `elicitation_policy="ask"` (default) and the client advertised elicitation; otherwise it falls to the agent's `hitl_hook`, else `HumanInputNotProvidedError`. A `@mcp_tool` can declare **resolved parameters** — `Annotated[T, Resolve(fn)]` where `fn` returns `Elicit(...)`, `Sample(...)` or `ListRoots()` — which are hidden from `inputSchema` and asked of the client before the body runs (runs regardless of `elicitation_policy`; write resolvers idempotently). `client_model=True` (borrowing the client's LLM via MCP sampling) is legacy — configure the agent's own model.
+A tool inside the served agent calling `await ctx.input("...")` (`ctx: Context`) is forwarded to the calling client's human when `elicitation_policy="ask"` (default) and the client advertised elicitation; otherwise it falls to the agent's `hitl_hook`, else `HumanInputNotProvidedError`. A `@mcp_tool` can declare **resolved parameters** — `Annotated[T, Resolve(fn)]` where `fn` returns `Elicit(...)`, `Sample(...)` or `ListRoots()` — which are hidden from `inputSchema` and asked of the client before the body runs (runs regardless of `elicitation_policy`; write resolvers idempotently). `Sample` and `ListRoots` rely on MCP sampling/roots, deprecated by MCP revision 2026-07-28 — prefer `Elicit` or plain tool arguments. `client_model=True` (borrowing the client's LLM via MCP sampling) is legacy — configure the agent's own model.
 
 ## Consume an external MCP server (client side)
 
@@ -130,6 +136,6 @@ print(reply.body)
 ## Reference
 
 - `references/serving_reference.md` — constructor tables, prompts/resources, `@mcp_tool` + `MCPRequestContext` + resolvers, `MCPApp`, OAuth2 security, `TransportConfig`, `AskContext`, pausing/ops, errors.
-- `references/test_server.py` — in-process tests of every server feature above (no keys).
-- `references/serve_and_consume.py` — uvicorn in-process + raw `mcp.client.Client` + `MCPToolkit` agent (needs `OPENAI_API_KEY`).
+- `scripts/test_snippets.py` — in-process tests of every server feature above (no keys).
+- `scripts/serve_and_consume.py` — uvicorn in-process + raw `mcp.client.Client` + `MCPToolkit` agent (needs `OPENAI_API_KEY`).
 - Upstream: `website/docs/user-guide/tools/{serving_mcp,mcp_servers,mcp_apps,mcp_ui}.mdx`; source `ag2/mcp/`, `ag2/tools/mcp*`.

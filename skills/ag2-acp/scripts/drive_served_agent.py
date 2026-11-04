@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """AG2 as ACP client driving serve_stdio.py (an AG2 agent served over ACP) — both directions, real model.
 
-Run:  OPENAI_API_KEY=... python references/drive_served_agent.py
+Run:  OPENAI_API_KEY=... python scripts/drive_served_agent.py
 The same ACPConfig shape drives Claude Code / Codex / OpenCode via their presets.
 """
 

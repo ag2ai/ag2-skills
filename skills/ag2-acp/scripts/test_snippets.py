@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """In-process checks for ag2.acp, both directions — no subprocess, no API keys.
 
-Run:  python references/test_snippets.py      (needs `pip install "ag2[acp]"`)
+Run:  python scripts/test_snippets.py      (needs `pip install "ag2[acp]"`)
 """
 
 import asyncio

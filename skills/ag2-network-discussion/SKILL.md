@@ -49,7 +49,7 @@ async def wait_for_text_count(hub, channel_id, expected, *, timeout=180.0):
 
 
 async def main() -> None:
-    config = AnthropicConfig(model="claude-sonnet-5")
+    config = AnthropicConfig(model="claude-sonnet-5")  # any provider config works, e.g. OpenAIResponsesConfig(model="gpt-4.1-mini") — see ag2-quickstart
     hub = await Hub.open(MemoryKnowledgeStore(), ttl_sweep_interval=0)
     link = LocalLink(hub)
     alice_hc, bob_hc, carol_hc = (HubClient(link, hub=hub) for _ in range(3))
@@ -74,7 +74,7 @@ async def main() -> None:
     )
     await channel.send("Topic: should every developer learn Rust?")  # alice's first turn
 
-    await wait_for_text_count(hub, channel.channel_id, expected=6)  # 2 full cycles
+    await wait_for_text_count(hub, channel.channel_id, expected=6)  # ~2 cycles; a polled floor, not a hard cap (may overshoot)
     await channel.close(reason="cap_reached")
 
     for env in await hub.read_wal(channel.channel_id):

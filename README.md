@@ -6,7 +6,7 @@ Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 ## Compatibility
 
-These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.3.0**). APIs deprecated in 1.3 and removed in 1.4 (`OpenAIConfig` as Chat Completions, `Agent(knowledge=)`, `Agent(assembly=)`, `TaskConfig`, `Agent.task()`) are not taught; `ag2-overview` lists their replacements.
+These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.3.0**). APIs deprecated in 1.3 and removed in 1.4 (`OpenAIConfig` as Chat Completions, `Agent(knowledge=)`, `Agent(assembly=)`, `TaskConfig`, `Agent.task()`, `AnthropicConfig(temperature=)` and other Anthropic sampling params) are not taught; `ag2-overview` lists their replacements.
 
 ## Installation
 
@@ -113,7 +113,7 @@ Give an AG2 `Agent` the ability to run shell commands.
 **Topics covered:**
 
 - `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider)
-- Provider-native `ShellTool` (Anthropic / OpenAI execution)
+- Provider-native shell: `ShellTool` (OpenAI) or `AnthropicBashTool` (Anthropic)
 - Sandboxing — `allowed`, `blocked`, `ignore`, `readonly`
 
 ### ag2-structured-output
@@ -415,7 +415,7 @@ Evaluate, test, and track an AG2 agent offline — run a suite, grade the answer
 - `Suite.from_list` + `run_agent`; the `RunResult` scorecard (`summary`, `pass_rate`, `score_stats`, `value_counts`)
 - Prebuilt scorers — `final_answer_matches`, `tool_called`, `no_tool_errors`, `token_budget`, `failure_attribution`, `agent_judge`
 - Custom `@scorer` + the return-type → aggregation rule (bool → pass_rate / num → score_stats / str → value_counts)
-- CI with deterministic `TestConfig` cassettes (agent factory + `model_config`)
+- CI with deterministic `TestConfig` cassettes (an `Agent` instance + `model_config`, not a factory)
 - Persistence — `store_dir`, `load_run`, `diff().regressions`; grading existing traces with `evaluate_traces`
 
 **See also:** `ag2-eval-comparison` for head-to-head and leaderboard comparison.
