@@ -2,6 +2,8 @@
 name: ag2-hitl
 description: "Pause an AG2 `Agent` mid-run for human input via `context.input()` + `hitl_hook`, or gate a tool call with `approval_required()` (`ApprovalRequired`) tool middleware. The hook receives a `HumanInputRequest`; approvals arrive as `ToolApprovalRequest` (1.3.0) carrying `tool_call_id`, so a programmatic approver can look up the tool name and arguments. Covers timeouts and `HumanInputError` (`HumanInputNotProvidedError`, `HumanInputFailedError`, `HumanInputTimeoutError`), 'always' approvals, and policy-only gates without a human. Use when the agent must ask for confirmation, request missing info, or have a human/policy approve sensitive, irreversible or expensive tool calls. See `ag2-middleware` for `on_human_input`, `ag2-subagent-delegation` for HITL in workers."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Human-in-the-loop

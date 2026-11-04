@@ -2,6 +2,8 @@
 name: ag2-network-governance
 description: "Govern an AG2 multi-agent network hub-side: identity (`Passport`, `Resume`, `ObservedStat`), per-agent `Rule` (`AccessBlock`, `LimitsBlock` with nested `RateBlock` / `InboxBlock`), the swappable `HubArbiter` / `RuleBasedArbiter` / `BaseHubArbiter` (`Allow` / `Deny`) gate, `AuthRegistry` / `AuthAdapter` / `ApiKeyAuth` / `NoAuth` registration auth, channel `Expectation`s with `ExpectationEvaluator` / `Violation` and `audit` / `notify_channel` / `auto_close` handlers, the append-only `hub.audit_log` with `AUDIT_KIND_*` constants, live `HubListener` / `BaseHubListener` fan-out, `register_sweeper`, and capability track records via `TaskMirror` + `Task(owner_id=..., spec=TaskSpec(capability=...))` or `agent.ask(..., capability=...)` (replaces deprecated `agent.task`). Use for access policy, inbox caps, SLAs/timeouts, compliance trails, metrics/alerting, peer ranking by track record. Load after `ag2-network-quickstart`; for handlers, views, LLM network tools and envelopes see `ag2-network-tools-and-views`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 Network — Governance

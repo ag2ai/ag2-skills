@@ -2,6 +2,8 @@
 name: ag2-live
 description: "Build voice agents with AG2's `ag2.live` module. Three patterns: (1) turn-by-turn STT → `Agent` → TTS — `OpenAITranscriber` / `ElevenLabsTranscriber` / `MistralTranscriber` `.pipe(agent)` (`VoicePipeline`, `VoiceInput`) plus `TTSObserver` with `OpenAITTSConfig`, `ElevenLabsStreamingTTSConfig`, `MistralTTSConfig` and friends; (2) realtime speech-to-speech `LiveAgent` with `OpenAIRealTimeConfig` or `GeminiRealTimeConfig` (`AudioOutput` / `TextOutput` / `InputConfig`, voices, VAD, tools); (3) `CascadeConfig` — any STT + any LLM + any TTS behind `LiveAgent`, with `SilenceTurnDetector` and barge-in. Audio I/O via `SoundDeviceRecorder` / `SoundDevicePlayer`; headless testing by pushing `RecordedAudioEvent`s. Use for talking agents, voice assistants, live captions, or speaking a text agent's reply. For sending one audio file into a text agent see `ag2-multimodal-input`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Voice and realtime agents (`ag2.live`)

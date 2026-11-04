@@ -2,6 +2,8 @@
 name: ag2-add-custom-tool
 description: Add a custom Python tool to an AG2 `Agent` using the `@tool` decorator. Use when the user wants to give an Agent a new capability backed by Python code (API calls, DB queries, computations, file ops) or needs tools to share state. Covers sync and async tools, `@tool(timeout=...)`, parameter typing, Pydantic `Field` schema customisation, returning typed `Input` / `ToolResult` (text / data / images / binary), `final=True` early-exit, dependency injection via `Context` / `Inject` / `Variable` / `Depends`, and conversation variables (`ask(variables=...)`, reading results back from `reply.context.variables`, `ScopedValue` / `Scope` / `ScopeError` for subagents). For built-in tools see `ag2-use-builtin-tools`; delegation `ag2-subagent-delegation`; approval gates `ag2-hitl`; testing `ag2-testing`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Add a custom Python tool

@@ -2,6 +2,8 @@
 name: ag2-shell-tool
 description: Give an AG2 `Agent` the ability to run shell commands or code. Covers `SandboxShellTool` (client-side, any provider) with execution backends `LocalEnvironment`, `DockerEnvironment`, `DaytonaEnvironment`, `TenkiEnvironment`; command filtering and restricted mode (`allowed`, `blocked`, `ignore`, `readonly`); `AnthropicBashTool` (Anthropic's `bash_20250124`, executed locally by AG2); the provider-hosted `ShellTool` (OpenAI Responses only, needs `ContainerAutoEnvironment` / `ContainerReferenceEnvironment` + `NetworkPolicy`); and `SandboxCodeTool` (`run_code`). Use when the agent should execute commands, build/test code, or operate on a workspace. For provider-run code execution (`CodeExecutionTool`) and other built-in tools see `ag2-use-builtin-tools`; to gate commands behind human approval see `ag2-hitl`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Shell tools

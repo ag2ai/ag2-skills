@@ -2,6 +2,8 @@
 name: ag2-multimodal-input
 description: Send images, audio, video, or documents into an AG2 `Agent` alongside text. Pass `ImageInput`, `AudioInput`, `VideoInput`, or `DocumentInput` as positional args to `agent.ask(...)`. Use when the user wants the agent to process non-text input — describe a photo, transcribe audio, summarise a PDF, analyse a video. Covers the per-provider support matrix (OpenAI Responses / Completions, Gemini, Anthropic, xAI, Mistral, Bedrock), the four ways to source data (URL / path / bytes / file_id), `BinaryInput(..., vendor_metadata=...)` for Gemini media-resolution / video clipping, OpenAI image detail and Anthropic prompt caching, Gemini YouTube URLs, and `FilesAPI` for upload lifecycle. For tools that return images see `ag2-add-custom-tool`; basic agent setup `ag2-quickstart`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Multimodal inputs

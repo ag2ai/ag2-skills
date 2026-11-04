@@ -36,6 +36,8 @@ skills/
 name: {skill-name}
 description: {One paragraph describing exactly when to use this skill. Lead with the action and key API surface; include trigger phrases and what to use it *with* (sibling skills).}
 license: Apache-2.0
+metadata:
+  ag2_version: "{ag2_version from COMPATIBILITY.json}"
 ---
 
 # {Skill Title}
@@ -62,7 +64,8 @@ These are hard limits, checked by `skills-ref validate ./skills/{skill-name}`. S
 | `name` | **≤ 64 characters** | Lowercase `a–z`, `0–9`, and hyphens only; no leading/trailing hyphen; no consecutive `--`; **must equal the directory name**. |
 | `description` | **≤ 1024 characters** | Non-empty; say *what* it does and *when* to use it, with trigger keywords. Must be **valid YAML**: if the text contains a colon-then-space (`: `), wrap the whole value in quotes — otherwise the frontmatter fails to parse. |
 | `compatibility` | ≤ 500 characters | Optional; only for real environment requirements. |
-| `license`, `metadata`, `allowed-tools` | — | Optional (see spec). |
+| `metadata.ag2_version` | — | **Required in this repo.** Must equal `ag2_version` in `COMPATIBILITY.json` (checked by `scripts/validate_versions.py` in CI). It travels with a copied skill or zip, which `COMPATIBILITY.json` does not. |
+| `license`, `allowed-tools` | — | Optional (see spec). |
 
 ### Body sizing (chars / tokens)
 
@@ -105,6 +108,13 @@ zip -r {skill-name}.zip {skill-name}/ -x "*.DS_Store" "*/__pycache__/*"
 ```
 
 The `-x` excludes keep macOS metadata and Python bytecode out of the archive.
+
+### Versioning and releases
+
+Skills are versioned as a set, by the AG2 release they were verified against:
+
+1. On an AG2 bump, update `ag2_version` / `ag2_commit` in `COMPATIBILITY.json` **and** `metadata.ag2_version` in every `SKILL.md`, then rebuild the zips. `python3 scripts/validate_versions.py` and `python3 scripts/validate_zips.py` must pass.
+2. After the bump PR merges, tag `main` as `ag2-<ag2_version>` (e.g. `ag2-1.3.0`) and push the tag. `.github/workflows/release.yml` re-validates and publishes a GitHub Release with all skill zips attached.
 
 ### End-User Installation
 

@@ -2,6 +2,8 @@
 name: ag2-overview
 description: Map of AG2 (ag2 1.3) capabilities and which sibling skill to reach for. Load first when the user mentions building with AG2 (ag2) but the specific feature isn't yet clear — agents, model config, tools, MCP, delegation/subagents, memory and context assembly, middleware, observers, structured output, HITL approval, testing, evaluation, AG-UI, A2A, ACP, realtime voice, telemetry, or multi-agent networks. Also lists the 1.3 APIs that are deprecated and removed in 1.4.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 — capability map
