@@ -2,6 +2,8 @@
 name: ag2-mcp
 description: "Serve an AG2 `Agent` as an MCP server (mcp SDK 2.x) for Claude Desktop, Cursor, the MCP Inspector or any MCP client, and consume an external MCP server from an agent. Server side: `MCPServer(agent)` exposes `Agent.ask()` as one `ask` tool with conversation handles, over stdio (`run_stdio()`) or streamable HTTP (it is an ASGI app for uvicorn); deterministic `@mcp_tool` tools with `MCPRequestContext` and `Resolve`/`Elicit`/`Sample`/`ListRoots` resolved params; `Prompt`/`PromptArgument`/`PromptMessage`, `Resource`/`ResourceTemplate`, `MCPApp` (MCP Apps UI); `SessionConfig`, `TransportConfig`/`TransportSecuritySettings`, `elicitation_policy`, `AskContext`/`ContextProvider`, OAuth2 `security=`, `RequestStateSecurity`, in-process `ag2.mcp.testing.connect`/`serve`. Client side: `MCPToolkit` with `MCPServerConfig`/`MCPStdioServerConfig`/`MCPAnswerPolicy`. For provider-side `MCPServerTool` and other shipped tools see `ag2-use-builtin-tools`; for A2A/ACP/AG-UI see `ag2-a2a`, `ag2-acp`, `ag2-ag-ui`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 + MCP: serve an agent, consume a server

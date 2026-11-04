@@ -2,6 +2,8 @@
 name: ag2-structured-output
 description: Get a typed Python value back from an AG2 `Agent` instead of free text. Pass `response_schema=` (a Pydantic model, dataclass, primitive, union, `ResponseSchema`, or `@response_schema` validator) and read the parsed result via `await reply.content()`. Use when the user wants validated structured output, classification, extraction, or scoring. Covers `ResponseSchema`, `@response_schema`, `PromptedSchema` (for providers without native structured output), `Annotated[str, Field(...)]` constraints, per-turn override, validation retries (`content(retries=)`), and primitive embedding. Works with `OpenAIResponsesConfig`, `AnthropicConfig`, `GeminiConfig` etc.; decision-only providers (`OpenAIDecisionsConfig`, `TypeSafeConfig`) treat the schema as the question. For basic agent setup see `ag2-quickstart`, for tools `ag2-add-custom-tool`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Structured output

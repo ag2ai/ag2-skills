@@ -2,6 +2,8 @@
 name: ag2-telemetry
 description: "Add OpenTelemetry traces to an AG2 `Agent` with `TelemetryMiddleware` (`ag2.middleware`, extra `ag2[tracing]`). Emits GenAI-semconv spans — `invoke_agent` (turn), `chat` (LLM call), `execute_tool`, `await_human_input`, plus `record_usage` spans for every `UsageEvent` (sub-agents, compaction) — with `capture_content`, `max_tool_result_chars`, `span_attributes` (tenant/env tags). Sub-agent turns nest under the parent's `execute_tool task_<worker>` span. Works with any OTLP backend (Jaeger, Tempo, Datadog, Honeycomb, Langfuse, Arize). Use for production traces, latency analysis, token attribution. For Prometheus metrics use `MetricsMiddleware` (`ag2-middleware`); for hub/network spans see `HubTelemetryListener` (`ag2-network-quickstart`)."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Telemetry — OpenTelemetry instrumentation

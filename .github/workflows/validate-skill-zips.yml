@@ -1,19 +1,24 @@
 name: Validate skill zips
 
 # Ensures every skills/<name>.zip stays in sync with its skills/<name>/ source
-# directory. Pure stdlib check — no dependencies, no AG2 install required.
+# directory, and every SKILL.md metadata.ag2_version matches COMPATIBILITY.json.
+# Pure stdlib checks — no dependencies, no AG2 install required.
 
 on:
   pull_request:
     paths:
       - "skills/**"
+      - "COMPATIBILITY.json"
       - "scripts/validate_zips.py"
+      - "scripts/validate_versions.py"
       - ".github/workflows/validate-skill-zips.yml"
   push:
     branches: [main]
     paths:
       - "skills/**"
+      - "COMPATIBILITY.json"
       - "scripts/validate_zips.py"
+      - "scripts/validate_versions.py"
       - ".github/workflows/validate-skill-zips.yml"
 
 jobs:
@@ -28,3 +33,6 @@ jobs:
 
       - name: Validate zips match sources
         run: python3 scripts/validate_zips.py
+
+      - name: Validate skill ag2_version matches COMPATIBILITY.json
+        run: python3 scripts/validate_versions.py

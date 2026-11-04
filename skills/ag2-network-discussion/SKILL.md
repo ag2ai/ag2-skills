@@ -2,6 +2,8 @@
 name: ag2-network-discussion
 description: "Open an AG2 network `discussion` channel — N-party (2+) round-robin where participants speak in a fixed order, cycling until explicit close or TTL. Use for a brainstorm or panel with a fixed cast, debate in turns, or round-robin reviewers. Covers `agent_client.open(type=\"discussion\", target=[...], knobs={\"ordering\": ORDERING_ROUND_ROBIN})`, rotation order (creator first, then `target` order), `expected_next_speaker`, the `hc.can_send(...)` probe that keeps out-of-turn handlers from calling the LLM, `DiscussionState`, app-side caps and `ChannelInject` close tools, a `HumanClient` seat in the rotation, reading the transcript from `hub.read_wal` (`EV_TEXT`), and the declared-but-inert `turn_within` expectation defaults. Load after `ag2-network-quickstart`. For conditional handoffs, pipelines, or graph-driven termination use `ag2-network-workflow`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 Network — Discussion Adapter
