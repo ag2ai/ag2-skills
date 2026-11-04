@@ -2,6 +2,8 @@
 name: ag2-network-workflow
 description: Build an AG2 network `workflow` channel — the orchestrated N-party adapter driven by a declarative `TransitionGraph`. Use for conditional handoffs, pipelines (researcher → writer → editor), triage/routing, drafter ↔ reviewer feedback loops, coordinator + specialists, or migrating from classic `GroupChat` / `Agent.handoffs` / `ReplyResult`. Covers `TransitionGraph`, `Transition`, factories `TransitionGraph.sequence(...)` / `.round_robin(...)`; targets `AgentTarget`, `RoundRobinTarget`, `StayTarget`, `RevertToInitiatorTarget`, `TerminateTarget`; conditions `Always`, `FromSpeaker`, `ToolCalled`, `ContextEquals`; typed tool returns `Handoff` (route) and `Finish` (close); `set_context` / `delete_context` / `EV_CONTEXT_SET`; seeding with a `HumanClient`; reading what each agent said from `EV_PACKET` `body`; `register_target` / `register_condition`; packet retry and idempotent tools. Load after `ag2-network-quickstart`; fixed round-robin without conditions is `ag2-network-discussion`.
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # AG2 Network — Workflow Adapter

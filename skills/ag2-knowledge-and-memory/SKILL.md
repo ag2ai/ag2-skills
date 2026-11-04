@@ -2,6 +2,8 @@
 name: ag2-knowledge-and-memory
 description: "Persist agent memory across runs, shape per-turn LLM context, cap history in AG2. Covers `KnowledgePlugin` (`plugins=[KnowledgePlugin(store, expose_tool=, aggregate=, compact=, ...)]`), stores `MemoryKnowledgeStore`, `SqliteKnowledgeStore`, `DiskKnowledgeStore` (needs watchdog), `RedisKnowledgeStore` (ag2[redis]), `LockedKnowledgeStore`; assembly policies via `Middleware(AssemblerMiddleware, policies=[...])` (`WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy` + `HaltCheckMiddleware`); aggregation (`WorkingMemoryAggregate`, `ConversationSummaryAggregate`, `AggregateTrigger`); compaction (`TailWindowCompact`, `SummarizeCompact`, `CompactTrigger`); `EventLogWriter`; `AggregationCompleted`/`CompactionCompleted`/`*Failed` events. Use for remembering between conversations, long histories, or prompt assembly; replaces deprecated `knowledge=`/`assembly=`. See `ag2-middleware`, `ag2-observers-and-alerts`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Knowledge, memory, and context assembly

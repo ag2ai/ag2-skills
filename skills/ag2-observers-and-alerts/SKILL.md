@@ -2,6 +2,8 @@
 name: ag2-observers-and-alerts
 description: "Monitor an AG2 agent's stream — log events, detect repeated tool calls, track token spend (including sub-agents), build trigger-driven observers, route alerts to the model, and halt on FATAL alerts. Covers `@observer(...)` (stateless), `BaseObserver` (stateful, `process()`, `timeout=`), built-ins `TokenMonitor` and `LoopDetector`, `Watch` primitives (`EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`), `ObserverAlert` + `Severity` (INFO/WARNING/CRITICAL/FATAL), `AlertPolicy` wired via `Middleware(AssemblerMiddleware, policies=[...])` + `Middleware(HaltCheckMiddleware)`, `HaltEvent`, and escalating CRITICAL to a halt. Use for observability, runtime safety guards, budget alerts, batch/time-based reactive logic. Sub-agent event trees (`ChildEvent`): `ag2-subagent-delegation`; traces: `ag2-telemetry`; blocking a tool before it runs: `ag2-hitl` / `ag2-middleware`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Observers, watches, and alerts

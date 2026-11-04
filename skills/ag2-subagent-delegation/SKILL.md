@@ -2,6 +2,8 @@
 name: ag2-subagent-delegation
 description: "Delegate work from one AG2 `Agent` to explicit worker agents exposed as tools via `Agent.as_tool()` / `subagent_tool()` (blocking), `background_agent_tool()` (fire-and-forget) or `dynamic_agent()` (LLM-composed workers). Covers parallel fan-out (several delegate calls in one model response), a shared concurrency cap via one function tool middleware, observing which worker ran (`TaskStarted`/`TaskCompleted` with `agent_name`/`path`, `@observer(ChildEvent)` + `event.source_event`), tree-wide usage via `reply.usage()`, scoped variables across workers (`Scope`, `ScopedValue`, `ScopeError`), and sub-task streams (`persistent_stream`, shared `Stream`, factories). Replaces the deprecated `TaskConfig` / `tasks=` / `run_subtask(s)` (removed in 1.4.0). For agents collaborating through a registry, channels and governance use `ag2-network-quickstart`; for event plumbing see `ag2-observers-and-alerts`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Subagent delegation

@@ -2,6 +2,8 @@
 name: ag2-acp
 description: "Agent Client Protocol (ACP) in both directions. CLIENT: drive CLI coding agents (Claude Code, Codex, OpenCode, Kilo Code) as AG2 Agents via `ClaudeCodeConfig`/`CodexConfig`/`OpenCodeConfig`/`KiloCodeConfig`/`ACPConfig`, or a remote agent via `ACPRemoteConfig(url=, headers=)`; stream thinking/tool calls/plans (`ACPPlan`, `ACPElicitation`), gate with `permission_policy` and `elicitation_policy`, expose AG2 tools to the CLI agent over MCP (`expose_tools`), `model=` selection, trimmed `env`, `turn_timeout`, `async with config`. SERVER: `ACPAgent(agent).run_stdio()` serves an AG2 agent to ACP clients/editors (Zed, JetBrains, VS Code, Neovim) with `SessionConfig`, `StaticTokenAuth`/`AuthProvider`, `PromptContent`, `hitl_hook`, `session/load`. Testing: `ag2.acp.testing.fake_acp_config`/`fake_remote_acp_config`/`connect`. For serving over MCP see `ag2-mcp`; A2A `ag2-a2a`; web UIs `ag2-ag-ui`; approvals `ag2-hitl`."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # ACP: drive CLI coding agents, or serve your agent to editors

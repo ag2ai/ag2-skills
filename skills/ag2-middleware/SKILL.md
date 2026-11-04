@@ -2,6 +2,8 @@
 name: ag2-middleware
 description: "Intercept the AG2 agent loop with `BaseMiddleware` hooks — `on_turn`, `on_llm_call`, `on_tool_execution`, `on_human_input` — registered via `Agent(middleware=[...])` or `ask(middleware=[...])`. Custom subclasses are passed as the CLASS or `Middleware(Cls, **kwargs)`, never an instance. Covers getting per-turn state out (shared object via kwargs, `reply.context.variables`), ordering, `ConditionalMiddleware`, `statusbar_middleware` (fresh status each model call), `describe()` / `DescribableMiddleware`, `ScopedMiddlewareFactory`, and assembly policies via `Middleware(AssemblerMiddleware, policies=[...])` + `HaltCheckMiddleware`. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `MetricsMiddleware`, `TelemetryMiddleware` (see `ag2-telemetry`), `approval_required` (see `ag2-hitl`). Use for retry, logging, timing, history trimming, request mutation, tool auditing, guardrails, rate limiting."
 license: Apache-2.0
+metadata:
+  ag2_version: "1.3.0"
 ---
 
 # Middleware
