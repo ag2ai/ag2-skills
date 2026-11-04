@@ -1,6 +1,6 @@
 ---
 name: ag2-middleware
-description: "Intercept the AG2 agent loop with `BaseMiddleware` \u2014 wrap full turns (`on_turn`), each LLM call (`on_llm_call`), each tool execution (`on_tool_execution`), or each human-input request (`on_human_input`). Use for retry, logging, history trimming, request mutation, tool auditing, guardrails, or rate limiting. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware` (see `ag2-telemetry`). For per-tool hooks see also `ag2-add-custom-tool` tool-middleware section."
+description: "Intercept the AG2 agent loop with `BaseMiddleware` hooks — `on_turn`, `on_llm_call`, `on_tool_execution`, `on_human_input` — registered via `Agent(middleware=[...])` or `ask(middleware=[...])`. Custom subclasses are passed as the CLASS or `Middleware(Cls, **kwargs)`, never an instance. Covers getting per-turn state out (shared object via kwargs, `reply.context.variables`), ordering, `ConditionalMiddleware`, `statusbar_middleware` (fresh status each model call), `describe()` / `DescribableMiddleware`, `ScopedMiddlewareFactory`, and assembly policies via `Middleware(AssemblerMiddleware, policies=[...])` + `HaltCheckMiddleware`. Built-ins: `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `MetricsMiddleware`, `TelemetryMiddleware` (see `ag2-telemetry`), `approval_required` (see `ag2-hitl`). Use for retry, logging, timing, history trimming, request mutation, tool auditing, guardrails, rate limiting."
 license: Apache-2.0
 ---
 
@@ -8,153 +8,136 @@ license: Apache-2.0
 
 ## When to use
 
-Middleware is for **cross-cutting behaviour** that should apply consistently across many runs without changing the agent, model client, or tools themselves. Common use cases:
-
-- Logging, tracing, timing
-- Retry on transient failures
-- Trim history before it reaches the model
-- Cap or estimate token usage
-- Rewrite tool arguments / results
-- Enforce policies before a tool runs
-- Audit human-input requests
+Cross-cutting behaviour that should apply to every turn without changing the agent, model client, or tools: logging/timing, retries, history trimming, request mutation, tool auditing/guardrails, rate limiting, HITL auditing.
 
 ## Four hooks
 
-`BaseMiddleware` exposes four async hooks. Implement only the ones you need:
-
-| Hook | Wraps | Use for |
+| Hook | Wraps | Returns |
 |---|---|---|
-| `on_turn(call_next, event, context) → ModelResponse` | The whole agent turn | Total latency, request/response inspection, turn-level policies |
-| `on_llm_call(call_next, events, context) → ModelResponse` | Each LLM API call | Retry, logging, history trim, request mutation, caching |
-| `on_tool_execution(call_next, event, context) → ToolResultType` | Each tool invocation | Validate args, redact results, fallback on failure, access control |
-| `on_human_input(call_next, event, context) → HumanMessage` | Each `context.input()` | Audit, rewrite prompts, automated short-circuit, rate limit |
+| `on_turn(call_next, event, context)` | the whole `ask()` turn | `ModelResponse` |
+| `on_llm_call(call_next, events, context)` | each model call (history in `events`) | `ModelResponse` |
+| `on_tool_execution(call_next, event, context)` | each tool call (`ToolCallEvent`) | `ToolResultType` |
+| `on_human_input(call_next, event, context)` | each `context.input()` / approval | `HumanMessage` |
 
-Each instance is created **once per turn** and can hold per-turn state on `self`. The same instance can implement multiple hooks.
+A **new instance is created per turn** (`__init__(self, event, context, **your_kwargs)`), so `self` state dies with the turn.
 
-## Built-in middleware
+## Registration — the rule that trips people up
 
-Importable from `ag2.middleware`:
+`middleware=[...]` takes **factories**: callables `(event, context) -> BaseMiddleware`.
 
-| Middleware | Purpose | Constructor |
-|---|---|---|
-| `LoggingMiddleware` | Logs turn start/end, each LLM call, each tool execution | no args |
-| `RetryMiddleware` | Retries failed LLM calls | `max_retries=N`, `retry_on=ExceptionClass` |
-| `HistoryLimiter` | Cap event count before LLM call | `max_events=N` |
-| `TokenLimiter` | Char-based token-budget cap before LLM call | `max_tokens=N`, `chars_per_token=4` |
-| `TelemetryMiddleware` | OpenTelemetry GenAI spans (see `ag2-telemetry`) | see telemetry skill |
+| What you have | Pass it as |
+|---|---|
+| Built-in (`LoggingMiddleware`, `RetryMiddleware`, `TokenLimiter`, ...) | an instance: `RetryMiddleware(max_retries=2)` (built-ins are factories) |
+| Your `BaseMiddleware` subclass, no extra args | the **class**: `middleware=[MyMiddleware]` |
+| Your subclass with extra `__init__` args | `Middleware(MyMiddleware, key=value)` |
+| `MyMiddleware()` / `MyMiddleware(event, ctx)` | **wrong** → `TypeError: 'MyMiddleware' object is not callable` |
 
-## Registration — agent-level
+Call-level middleware (`agent.ask(..., middleware=[...])`, `reply.ask(...)`) is appended **after** the agent's list.
 
-Apply to every turn:
+## Recipe — custom middleware + getting state out
 
 ```python
-from ag2 import Agent
-from ag2.config import OpenAIConfig
-from ag2.middleware import LoggingMiddleware, RetryMiddleware
+import time
+from collections.abc import Sequence
 
+from ag2 import Agent, Context, tool
+from ag2.config import OpenAIResponsesConfig
+from ag2.events import BaseEvent, ModelResponse
+from ag2.middleware import BaseMiddleware, LLMCall, Middleware, RetryMiddleware
+
+class CallTimer(BaseMiddleware):
+    def __init__(self, event: BaseEvent, context: Context, stats: list[float]) -> None:
+        super().__init__(event, context)
+        self.stats = stats                      # shared object outlives the per-turn instance
+
+    async def on_llm_call(self, call_next: LLMCall, events: Sequence[BaseEvent], context: Context) -> ModelResponse:
+        start = time.perf_counter()
+        try:
+            return await call_next(events, context)
+        finally:
+            self.stats.append(time.perf_counter() - start)
+
+class CountCalls(BaseMiddleware):               # no extra args -> pass the class
+    async def on_llm_call(self, call_next, events, context):
+        context.variables["llm_calls"] = context.variables.get("llm_calls", 0) + 1
+        return await call_next(events, context)
+
+@tool
+def add(a: int, b: int) -> int:
+    """Add two integers."""
+    return a + b
+
+durations: list[float] = []
 agent = Agent(
-    "assistant",
-    config=OpenAIConfig(model="gpt-4o-mini"),
-    middleware=[
-        LoggingMiddleware(),
-        RetryMiddleware(max_retries=2),
-    ],
+    "calc",
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
+    tools=[add],
+    middleware=[Middleware(CallTimer, stats=durations), CountCalls, RetryMiddleware(max_retries=2)],
 )
+reply = await agent.ask("What is 17+25? Use the tool.")
+print(len(durations), reply.context.variables["llm_calls"])   # 2 2  (tool round-trip)
 ```
 
-## Registration — call-level
-
-Add temporary middleware for one turn. Both `agent.ask(...)` and `reply.ask(...)` accept it:
-
-```python
-from ag2.middleware import TokenLimiter
-
-reply = await agent.ask("Summarise the latest messages.", middleware=[LoggingMiddleware()])
-next_turn = await reply.ask("Now answer in one paragraph.", middleware=[TokenLimiter(max_tokens=4000)])
-```
-
-Call-level middleware is **appended after** the agent's middleware list.
+Two ways out of a per-turn instance: pass a mutable object via `Middleware(Cls, obj=...)`, or write to `context.variables` and read **`reply.context.variables`** (the dict you passed to `ask(variables=...)` is copied, not mutated). For a reusable component with its own state, write a factory class (`__call__(self, event, context) -> BaseMiddleware`) like the built-ins do.
 
 ## Ordering
 
-Middleware runs in registration order, like nested `with` blocks. Registering `[A, B, C]` enters `A → B → C` and unwinds `C → B → A`:
+`[A, B, C]` enters A → B → C and unwinds C → B → A (A is outermost). Put retry *outside* anything whose work should be retried; put history trimming closest to the model; put `statusbar_middleware` **before** `RetryMiddleware` to reuse one snapshot across attempts.
 
-```
-enter A
-  enter B
-    enter C
-      <LLM call>
-    exit C
-  exit B
-exit A
-```
+## Built-ins and helpers (all from `ag2.middleware`)
 
-This matters when you mix logging, mutation, retry. If `RetryMiddleware` should retry mutated requests, mutation goes **inside** retry; if you want each retry attempt logged separately, logging goes **inside** retry.
+| Name | Use |
+|---|---|
+| `LoggingMiddleware(logger=None)` | log turns, LLM calls, tools |
+| `RetryMiddleware(max_retries=3, retry_on=(Exception,))` | retry LLM calls (not after a chunk/tool call was already published) |
+| `HistoryLimiter(max_events=N)` / `TokenLimiter(max_tokens=N, chars_per_token=4)` | trim history before each call (targets, not hard caps) |
+| `MetricsMiddleware(registry=CollectorRegistry())` | Prometheus metrics, `ag2[metrics]`; one per registry |
+| `TelemetryMiddleware(...)` | OpenTelemetry spans — `ag2-telemetry` |
+| `ConditionalMiddleware(factory, condition=ToolCallEvent.name == "x")` | gate any middleware by event condition |
+| `statusbar_middleware` | append fresh `Input` parts to every model request |
+| `HaltCheckMiddleware` | stop model calls after a `HaltEvent` (with `AlertPolicy`) |
+| `approval_required()` | **tool** middleware for HITL — `ag2-hitl` |
 
-## Writing your own
-
-Subclass `BaseMiddleware`, implement the hooks you need:
+### Status bar (1.3.0)
 
 ```python
-import logging
-from collections.abc import Sequence
-from ag2 import Agent, Context
-from ag2.config import OpenAIConfig
-from ag2.events import BaseEvent, ModelResponse, ToolCallEvent
-from ag2.middleware import BaseMiddleware, LLMCall, Middleware, ToolExecution
+from typing import Annotated
+from ag2 import DataInput, Variable
+from ag2.middleware import statusbar_middleware
 
-class AuditMiddleware(BaseMiddleware):
-    def __init__(self, event: BaseEvent, context: Context, logger: logging.Logger) -> None:
-        super().__init__(event, context)
-        self.logger = logger
+@statusbar_middleware
+def budget(calls: Annotated[int, Variable("llm_calls", default=0)]) -> DataInput | None:
+    return DataInput({"llm_calls_so_far": calls, "limit": 5})
 
-    async def on_llm_call(self, call_next: LLMCall, events: Sequence[BaseEvent], context: Context) -> ModelResponse:
-        self.logger.info("Calling model with %d events", len(events))
-        response = await call_next(events, context)
-        self.logger.info("Model returned: %s", response)
-        return response
-
-    async def on_tool_execution(self, call_next: ToolExecution, event: ToolCallEvent, context: Context):
-        self.logger.info("Executing tool: %s", event.name)
-        return await call_next(event, context)
-
-agent = Agent(
-    "assistant",
-    config=OpenAIConfig(model="gpt-4o-mini"),
-    middleware=[
-        Middleware(AuditMiddleware, logger=logging.getLogger("ag2.audit")),
-    ],
-)
+agent = Agent(..., middleware=[budget])   # the decorated function is already a factory
 ```
 
-If your middleware needs constructor args beyond `event` and `context`, **wrap with `Middleware(YourClass, ...)`** when registering. Zero-config middleware can be passed bare (`middleware=[LoggingMiddleware()]`).
+Callback (sync/async, DI-enabled) returns `Input`, a list of `Input`, or `None`; parts are not stored in history unless `persist=True`.
 
-## Tool-scoped vs agent-scoped
+### Assembly policies (replaces deprecated `Agent(assembly=[...])`)
 
-For behaviour that applies to **one tool only** (validation, redaction for that tool's output, approval gates), use **tool middleware** instead — `middleware=[hook]` on `@tool`, `@agent.tool`, or `Toolkit`. See `ag2-add-custom-tool` for the syntax. The `approval_required()` built-in (see `ag2-hitl`) is a tool middleware.
+```python
+from ag2.assembly import AssemblerMiddleware
+from ag2.middleware import HaltCheckMiddleware, Middleware
+from ag2.policies import AlertPolicy, SlidingWindowPolicy
 
-Agent middleware runs **outside** tool middleware: `BaseMiddleware.on_tool_execution()` sees the full execution including tool-scoped hooks.
-
-## Picking the right hook
-
-- `on_turn` → behaviour about the whole request/response lifecycle.
-- `on_llm_call` → behaviour about what goes into / comes out of the model.
-- `on_tool_execution` → tool safety / auditing / result shaping across many tools.
-- Tool-scoped middleware (not `BaseMiddleware`) → behaviour for a single tool's definition.
-- `on_human_input` → intercept HITL requests/responses.
+middleware = [
+    Middleware(AssemblerMiddleware, policies=[AlertPolicy(), SlidingWindowPolicy(max_events=50)]),
+    Middleware(HaltCheckMiddleware),           # right after, so FATAL alerts stop the call
+]
+```
 
 ## Going deeper
 
-- `references/builtin_middleware.md` — every built-in's params, common-case recipes, when each fits.
-- `website/docs/user-guide/middleware.mdx` — full reference, ordering examples, custom-middleware guidelines.
-- `website/docs/user-guide/tools/tool_middleware.mdx` — per-tool hooks (different mental model — plain async callables, not `BaseMiddleware`).
-- For OpenTelemetry instrumentation specifically, see `ag2-telemetry`.
+- `references/builtin_middleware.md` — built-in parameters, `describe()` / `DescribableMiddleware`, `ScopedMiddlewareFactory`, stacking order.
+- Upstream: `website/docs/user-guide/middleware.mdx`, `status_bars.mdx`, `advanced/assembly.mdx`, `tools/tool_middleware.mdx`, `metrics.mdx`.
+- One-tool behaviour → tool middleware (`@tool(middleware=[fn])`, plain `async def fn(call_next, event, context)`) — `ag2-add-custom-tool`. Agent middleware runs outside tool middleware.
 
 ## Common pitfalls
 
-- **Forgetting `Middleware(...)` for constructor args** — `middleware=[AuditMiddleware]` (no wrapper) only works if the class needs only `event` and `context`. Otherwise wrap: `middleware=[Middleware(AuditMiddleware, logger=...)]`.
-- **Mutation order surprises** — middleware runs in registration order. If middleware A trims history and middleware B logs it, register `[A, B]` so B sees the trimmed view.
-- **Per-call middleware doesn't replace agent middleware** — it's appended. Agent middleware still runs.
-- **One big middleware doing five things** — keep hooks focused. Logging + retry + mutation + policy in one class is hard to reason about and order. Split into multiple instances.
-- **`on_tool_execution` branching on `event.name` for a single tool** — that's a smell; use tool-scoped middleware for one-tool behaviour and reserve `on_tool_execution` for cross-cutting policies.
-- **Putting OpenTelemetry instrumentation in custom code** — there's a `TelemetryMiddleware` for that; see `ag2-telemetry`.
+- **Passing an instance of your subclass** — `TypeError: '...' object is not callable`. Pass the class or `Middleware(Cls, **kw)`.
+- **Passing the class when `__init__` needs kwargs** — `TypeError: ... missing 1 required positional argument`. Wrap with `Middleware(...)`.
+- **Storing results on `self`** — gone after the turn; use a shared object or `context.variables`.
+- **Per-call middleware replacing agent middleware** — it is appended; both run.
+- **Using `assembly=`** — deprecated (removed 1.4.0); use `AssemblerMiddleware` as above.
+- **Branching on `event.name` in `on_tool_execution` for one tool** — use tool middleware or `ConditionalMiddleware`.

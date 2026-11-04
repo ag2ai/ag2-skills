@@ -1,176 +1,133 @@
 ---
 name: ag2-ag-ui
-description: Expose an AG2 `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom React/Next.js, or any AG-UI client) can stream responses (text and reasoning), render tool calls, sync shared state, and track sub-task steps. Wraps the agent with `AGUIStream(agent)` and mounts it in FastAPI via `stream.dispatch(...)` or `stream.build_asgi()`. Use when the user wants a web frontend in front of an AG2 agent rather than a CLI / script.
+description: "Expose an AG2 `Agent` over the AG-UI 1.0 protocol (`ag-ui-protocol>=1.0`) so a web frontend (CopilotKit, `@ag-ui/client` HttpAgent, custom React/Next.js) or a CopilotKit Channel (Slack etc.) can stream text, render backend and frontend tool calls, sync shared state, see delegations, and answer human-in-the-loop interrupts. Covers `AGUIStream(agent)` with `stream.dispatch(...)` in FastAPI or `stream.build_asgi()` as a Starlette route, `read_run_input` (tolerant body parsing), `stream.capabilities()`, the `RunAgentInput` body (`threadId`/`runId`/`messages`/`state`/`context`/`tools`/`resume`), emitted events (`TEXT_MESSAGE_CHUNK`, `TEXT_MESSAGE_START/CONTENT/END`, `TOOL_CALL_*`, `STATE_SNAPSHOT`, `SUBAGENT_*`, `RUN_FINISHED` outcomes), interrupts/`resume`, `Retention`, `require_resume_proof`. For A2A interop see `ag2-a2a`; MCP `ag2-mcp`; IDE agents `ag2-acp`."
 license: Apache-2.0
 ---
 
-# AG-UI integration
+# AG-UI integration (AG-UI 1.0)
+
+`ag2.ag_ui.AGUIStream` turns an `Agent` into an AG-UI Server-Sent-Events endpoint. Use it when a browser UI (or a CopilotKit Channel) should talk to an AG2 agent with a standard contract; for a narrow app-specific API, a plain endpoint is simpler.
+
+```bash
+pip install "ag2[ag-ui,openai]" fastapi uvicorn
+```
 
 ## When to use
 
-- The user is building a web UI (React / Next.js / anything HTTP+SSE) that should talk to an AG2 agent.
-- They want streaming text, reasoning, tool-call rendering, shared state sync, or sub-task step tracking surfaced to the frontend with a standard protocol — not a custom REST/WebSocket contract.
-- They're using or considering CopilotKit (the recommended React client).
+- A web UI (React / Next.js / anything HTTP + SSE) should talk to an AG2 agent.
+- You want streamed text, reasoning, tool-call rendering, shared state or sub-task steps surfaced to the frontend through a standard protocol.
+- You use or consider CopilotKit as the React client.
 
-For a custom narrow-purpose API where you own the contract end-to-end, skip AG-UI and write a plain endpoint instead.
+For a narrow app-specific API whose contract you own end to end, write a plain endpoint instead.
 
-## Supported AG-UI features
-
-| Feature | Status |
-|---|---|
-| Run lifecycle (`RUN_STARTED` / `RUN_FINISHED` / `RUN_ERROR`) | ✓ |
-| Streaming text events (`TEXT_MESSAGE_START` / `_CONTENT` / `_END` / `_CHUNK`) | ✓ |
-| Reasoning events (`REASONING_START` / `_END`, `REASONING_MESSAGE_START` / `_CONTENT` / `_END`) | ✓ |
-| Backend tool lifecycle (`TOOL_CALL_START` / `_ARGS` / `_RESULT` / `_END`) | ✓ |
-| Frontend-tool dispatch (`TOOL_CALL_CHUNK` for client tools in `RunAgentInput.tools`) | ✓ |
-| Shared-state snapshots (`STATE_SNAPSHOT`) | ✓ |
-| Sub-task steps (`STEP_STARTED` / `STEP_FINISHED`, emitted on `TaskStarted` / `TaskCompleted`) | ✓ |
-| Human input checkpoints surfaced as AG-UI events | ✗ — no human-input event family; `hitl_hook` passes through to `agent.ask` |
-
-## Installation
-
-```bash
-pip install "ag2[ag-ui]"
-```
-
-> Required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
-
-## 60-second recipe — FastAPI server
+## Server (FastAPI, manual dispatch — recommended)
 
 ```python title="run_ag_ui.py"
-from fastapi import FastAPI, Header
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from ag2 import Agent
-from ag2.ag_ui import AGUIStream, RunAgentInput
-from ag2.config import OpenAIConfig
+from ag2.ag_ui import AGUIStream, read_run_input
+from ag2.config import OpenAIResponsesConfig
 
 agent = Agent(
     name="support_bot",
     prompt="You help users with billing questions.",
-    config=OpenAIConfig(model="gpt-4o-mini"),
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
 )
-
 stream = AGUIStream(agent)
 app = FastAPI()
 
+@app.get("/chat")
+@app.get("/chat/capabilities")
+async def capabilities() -> JSONResponse:
+    return JSONResponse(stream.capabilities().model_dump(by_alias=True, exclude_none=True))
+
 @app.post("/chat")
-async def run_agent(message: RunAgentInput, accept: str | None = Header(None)) -> StreamingResponse:
+async def run_agent(request: Request) -> Response:
+    try:
+        run_input = read_run_input(await request.body())   # strips unknown roles/parts from newer clients
+    except ValueError:
+        return JSONResponse({"error": "invalid AG-UI RunAgentInput body"}, status_code=400)
     return StreamingResponse(
-        stream.dispatch(message, accept=accept),
-        media_type=accept or "text/event-stream",
+        stream.dispatch(run_input, accept=request.headers.get("accept")),
+        media_type="text/event-stream",                    # always SSE; don't echo Accept
     )
 ```
 
-```bash
-uvicorn run_ag_ui:app --reload --port 8000
-```
+Do **not** declare `run_input: RunAgentInput` as a FastAPI parameter — a newer client's unknown role/part gets a 422; `read_run_input` serves it. `dispatch(...)` also takes `variables=`, `dependencies=` (server-only secrets, e.g. the verified user), `prompt=`, `tools=`, `config=`, `middleware=`, `hitl_hook=`, `context_prompt=`.
 
-Test:
-
-```bash
-curl -N -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  -d '{"thread_id":"t1","run_id":"r1","messages":[{"id":"m1","role":"user","content":"Hello"}],"state":{},"context":[],"tools":[]}'
-```
-
-## Lower-friction alternative — `build_asgi()`
-
-If you don't need custom auth / middleware, mount the ASGI endpoint directly:
+No custom logic? Add the generated endpoint as a **route** (not `mount`, which 307-redirects `/chat` → `/chat/`):
 
 ```python
-from ag2.ag_ui import AGUIStream
-from fastapi import FastAPI
-
-app = FastAPI()
-stream = AGUIStream(agent)
-app.mount("/chat", stream.build_asgi())
+from starlette.routing import Route
+endpoint = stream.build_asgi()
+app.routes.append(Route("/chat", endpoint))
+app.routes.append(Route("/chat/capabilities", endpoint))
 ```
 
-## CopilotKit frontend (recommended for React / Next.js)
-
-Two ways to start:
+## Request body (`RunAgentInput`, camelCase JSON)
 
 ```bash
-# Option A — CopilotKit bootstrap
-npx copilotkit@latest create -f ag2
-
-# Option B — clone the reference starter
-# https://github.com/ag2ai/ag2-copilotkit-starter
+curl -N -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" -H "Accept: text/event-stream" -d '{
+  "threadId": "thread-1", "runId": "run-1", "protocolVersion": "1.0",
+  "messages": [{"id": "m1", "role": "user", "content": "Hello"}],
+  "state": {}, "context": [], "tools": [], "forwardedProps": {}
+}'
 ```
 
-The starter layout:
+- New `runId` per POST; same `threadId` across a turn (and for resumes). Send the full message history each run.
+- `state` (JSON object) seeds `context.variables`; `context: [{"description", "value"}]` is appended to the system prompt as prose (not variables).
+- `tools: [{"name", "description", "parameters": <JSON schema>}]` are **frontend tools**.
+- Omit `protocolVersion` → treated as pre-1.0 (tool results downgraded to strings); major `2.x` → lone `RUN_ERROR` `UNSUPPORTED_PROTOCOL_VERSION`.
 
-```
-ag2-copilotkit-starter/
-├── agent-py/     # Python backend (AG2 + AG-UI)
-└── ui-react/     # React + CopilotKit frontend
-```
+## Events actually emitted (verified, AG2 1.3.0)
 
-Backend serves `/chat` on port 8008 by default. The Next.js route at `ui-react/app/api/copilotkit/route.ts` bridges the UI to the backend:
+Streaming is optional — `AGUIStream` works with either. For a chat UI, set `streaming=True` on the model config (e.g. `OpenAIResponsesConfig(model=..., streaming=True)`) so text renders token by token; without it the whole reply arrives as one chunk.
 
-```tsx
-import { HttpAgent } from "@ag-ui/client";
-import { CopilotRuntime, ExperimentalEmptyAdapter, copilotRuntimeNextJSAppRouterEndpoint } from "@copilotkit/runtime";
-import { NextRequest } from "next/server";
+| Situation | Event sequence |
+|---|---|
+| Plain reply, non-streaming model | `RUN_STARTED → TEXT_MESSAGE_CHUNK → RUN_FINISHED` |
+| Model config `streaming=True` | `RUN_STARTED → TEXT_MESSAGE_START → TEXT_MESSAGE_CONTENT×n → TEXT_MESSAGE_END → RUN_FINISHED` |
+| Backend tool | `TOOL_CALL_START → TOOL_CALL_ARGS → TOOL_CALL_END → TOOL_CALL_RESULT` then text |
+| Frontend tool (from `tools`) | `RUN_STARTED → TOOL_CALL_CHUNK → RUN_FINISHED` with `outcome: {"type":"success","pendingToolCallIds":[...]}`; client runs it and posts a new run with the assistant `toolCalls` + `role:"tool"` message |
+| Reasoning | `REASONING_START`, `REASONING_MESSAGE_START/CONTENT/END`, `REASONING_END` |
+| State changed | `STATE_SNAPSHOT` (client state + server variables) at start/end when different |
+| Delegation (`agent.as_tool`) | `SUBAGENT_STARTED` / `SUBAGENT_FINISHED` / `SUBAGENT_ERROR` (replaces old `STEP_*`) |
+| Failure | `RUN_ERROR` (logged on `ag2.ag_ui`; `dispatch` does not raise) |
 
-const agent = new HttpAgent({ url: "http://localhost:8008/chat" });
-const runtime = new CopilotRuntime({ agents: { weather_agent: agent } });
+Text deltas are in `event["delta"]`. `RUN_FINISHED`/`RUN_ERROR` carry `usage` per provider/model.
 
-export async function POST(req: NextRequest) {
-  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
-    serviceAdapter: new ExperimentalEmptyAdapter(),
-    endpoint: "/api/copilotkit",
-  });
-  return handleRequest(req);
-}
-```
+## Human-in-the-loop interrupts
 
-Wrap your app:
+A tool calling `await context.input("Book LH441? (yes/no)")` on an agent **without** `hitl_hook` ends the run with `RUN_FINISHED` + `outcome: {"type": "interrupt", "interrupts": [{"id", "reason": "input_required", "message", "responseSchema", "expiresAt", "metadata"}]}`; the coroutine stays suspended in-process. Answer with a new run on the same thread:
 
-```tsx
-import { CopilotKit } from "@copilotkit/react-core";
-import "@copilotkit/react-ui/styles.css";
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <CopilotKit agent="weather_agent" runtimeUrl="/api/copilotkit">
-          {children}
-        </CopilotKit>
-      </body>
-    </html>
-  );
-}
+```json
+{"threadId": "thread-1", "runId": "run-2", "messages": [], "state": {}, "context": [], "tools": [],
+ "resume": [{"interruptId": "<id>", "status": "resolved", "payload": "yes", "metadata": <interrupt.metadata>}]}
 ```
 
-Render chat (`<CopilotChat />`), and use `useCopilotAction({...})` in client components to render generative UI tied to backend tool calls.
+→ `RUN_STARTED → TOOL_CALL_RESULT → TEXT_MESSAGE_CHUNK → RUN_FINISHED`. `"status": "cancelled"` stops the turn. Tools wrapped in `approval_required()` interrupt with `reason: "tool_call"` + `toolCallId`; answer `payload: true/false`. With a `hitl_hook` (agent or `dispatch`) no interrupt is emitted.
 
-## Production checklist
+Ops: held turns live in one process → **route by `threadId` (sticky)**; restarts drop them. Tune `AGUIStream(agent, retention=Retention(ttl=900.0, max_held=128), require_resume_proof=False)`. Call `await stream.aclose()` on shutdown (or `async with stream:`). Refusals: `RUN_ERROR` codes `INTERRUPT_NOT_COVERED` / `INTERRUPT_NOT_PROVEN` / `INTERRUPT_PAYLOAD_REFUSED`.
 
-- **CORS** — allow your frontend origin on the AG-UI backend (`POST`, `OPTIONS`, auth headers).
-- **Auth** — protect both `/api/copilotkit` (Next.js route) and backend `/chat`. Don't rely on client-only secrets.
-- **SSE buffering** — verify backend response is `Content-Type: text/event-stream` and that proxy layers (Nginx, CloudFront, etc.) don't buffer SSE.
-- **Timeouts / retries** — conservative values for long-running tool workflows; only retry idempotent requests.
-- **Tool inputs are untrusted** — validate and authorize server-side before invoking privileged tools. Log tool execution with request IDs.
-- **Tool name parity** — frontend `useCopilotAction` `name` must match backend `@tool` name exactly.
+## Frontends
 
-## Going deeper
+- **CopilotKit** (React/Next.js): `npx copilotkit@latest create -f ag2` or the `ag2ai/ag2-copilotkit-starter`; bridge with `new HttpAgent({ url: "http://localhost:8000/chat" })` from `@ag-ui/client` 1.x in a `CopilotRuntime`. See `references/copilotkit.md`.
+- **Channels** (Slack etc.): a Node 22 process with `@copilotkit/channels` calls the same `/chat` endpoint per message (`website/docs/user-guide/ag-ui/channels.mdx`).
+- **Dojo** for protocol testing: https://dojo.ag-ui.com/ag2/feature/agentic_chat
 
-- `website/docs/user-guide/ag-ui/index.mdx` — `AGUIStream`, supported events, basic server.
-- `website/docs/user-guide/ag-ui/copilotkit-quickstart.mdx` — full React + CopilotKit walkthrough (file layout, route, layout, chat component, weather-card example).
-- AG-UI protocol: https://docs.ag-ui.com/introduction
-- Reference starter: https://github.com/ag2ai/ag2-copilotkit-starter
-- For protocol-level testing: AG2 Dojo profile https://dojo.ag-ui.com/ag2/feature/agentic_chat
+## Pitfalls
 
-## Common pitfalls
+- Expecting `TEXT_MESSAGE_START/CONTENT/END` from a non-streaming model — you get one `TEXT_MESSAGE_CHUNK`. Handle both.
+- Secrets in `variables` or the agent's variables are sent to the browser in `STATE_SNAPSHOT` — use `dispatch(dependencies=...)`.
+- A fresh run (no `resume`) on a thread with a held interrupt is refused (`INTERRUPT_NOT_COVERED`).
+- `@ag-ui/client` / CopilotKit `useInterrupt` don't echo interrupt `metadata`; only matters with `require_resume_proof=True`.
+- Proxies must not buffer `text/event-stream`; add CORS for the frontend origin; authenticate both GET and POST routes.
+- Frontend tool names in the UI must exactly match the names the model is given.
 
-- **Missing `ag-ui` extra** — `pip install "ag2[ag-ui]"` is required; without it `from ag2.ag_ui import AGUIStream` will fail.
-- **CORS blocked** — frontend can't hit the backend in dev. Add `CORSMiddleware` to the FastAPI app for the dev origin.
-- **No streaming output** — proxy or `Content-Type` issue. Test with raw `curl -N` first to isolate.
-- **Tool UI not rendering** — tool name on the React side (`useCopilotAction({ name: "..." })`) doesn't exactly match the backend `@tool` name.
-- **Putting the endpoint behind a SSE-incompatible proxy** — many proxies buffer event-stream responses by default. Disable buffering on the route.
-- **Trying to use `AGUIStream` with classic `ConversableAgent`** — the description here covers `ag2.Agent`. Classic AG2 agents can be exposed differently; check the AG2 docs for that path.
+## Reference
+
+- `scripts/serve_and_probe.py` — FastAPI + uvicorn in-process; prints real event sequences for plain run, backend tool, interrupt + resume (needs `OPENAI_API_KEY`).
+- `references/copilotkit.md` — CopilotKit route/layout snippets, auth/production checklist.
+- Upstream: `website/docs/user-guide/ag-ui/{overview,backend-deepdive,copilotkit-quickstart,channels}.mdx`; `examples/ag_ui/human_input.py`; source `ag2/ag_ui/`.

@@ -1,6 +1,6 @@
 ---
 name: ag2-subagent-delegation
-description: Single-agent recursion and parallel fan-out within one AG2 `Agent` — auto-injected `run_subtask` / `run_subtasks(parallel=True)` (opt in via `tasks=TaskConfig(...)`) for self-delegation, and `Agent.as_tool()` as a lightweight no-hub way to call one named agent from inside another. Use when a single coordinator wants to break work into its own sub-tasks, fan out concurrent sub-tasks, or invoke a specialist agent as a tool. Covers context flow, recursion safety, and `persistent_stream` for sub-task history. **For two or more agents actually collaborating with a registry, durable channels, governance, or turn-taking, use `ag2-network-quickstart` instead** — the network is the standard multi-agent pattern in AG2.
+description: "Delegate work from one AG2 `Agent` to explicit worker agents exposed as tools via `Agent.as_tool()` / `subagent_tool()` (blocking), `background_agent_tool()` (fire-and-forget) or `dynamic_agent()` (LLM-composed workers). Covers parallel fan-out (several delegate calls in one model response), a shared concurrency cap via one function tool middleware, observing which worker ran (`TaskStarted`/`TaskCompleted` with `agent_name`/`path`, `@observer(ChildEvent)` + `event.source_event`), tree-wide usage via `reply.usage()`, scoped variables across workers (`Scope`, `ScopedValue`, `ScopeError`), and sub-task streams (`persistent_stream`, shared `Stream`, factories). Replaces the deprecated `TaskConfig` / `tasks=` / `run_subtask(s)` (removed in 1.4.0). For agents collaborating through a registry, channels and governance use `ag2-network-quickstart`; for event plumbing see `ag2-observers-and-alerts`."
 license: Apache-2.0
 ---
 
@@ -8,202 +8,124 @@ license: Apache-2.0
 
 ## When to use
 
-- "Coordinator + specialists" — a parent agent should hand parts of a task to a research agent, math agent, etc.
-- "Fan out then collect" — multi-part questions where each part is independent and parallel execution saves wall time.
-- "Self-delegation" — one agent breaks complex work into focused sub-tasks for itself.
+- "Coordinator + specialists" — a parent hands parts of a task to a researcher, a math expert, a writer.
+- "Fan out then collect" — independent sub-questions that should run concurrently.
+- "Which worker ran?" — observe delegations, their tool calls and token spend from the parent.
 
-## Two patterns
+> `TaskConfig`, `Agent(tasks=...)` and auto-injected `run_subtask` / `run_subtasks` are **deprecated in 1.3.0, removed in 1.4.0**. Build workers explicitly (below). Migration table: `references/delegation_tree.md`.
 
-| Pattern | Reach for it when | API |
-|---|---|---|
-| **Auto-injected** `run_subtask` / `run_subtasks` | Lightweight self-delegation, dynamic fan-out, parallel sub-questions | `tasks=TaskConfig(...)` on the parent |
-| **`Agent.as_tool()`** | Distinct named delegates the LLM should reason about ("call the researcher", "call the writer") | Wrap a child Agent as a tool on the parent |
-
-The two compose — a coordinator can have both.
-
-## Pattern 1 — auto-injected `run_subtasks`
-
-Subtask tools are **off by default** (`tasks=False`). Opt in with `tasks=TaskConfig(...)` and the agent gains:
-
-- `run_subtask(task: str)` — one isolated sub-task agent.
-- `run_subtasks(tasks: list[str], parallel: bool = True)` — fan out multiple in one tool call (default concurrent).
-
-```python
-from ag2 import Agent, TaskConfig
-from ag2.config import GeminiConfig
-
-config = GeminiConfig(model="gemini-3-flash-preview")
-
-coordinator = Agent(
-    "coordinator",
-    prompt=(
-        "You answer multi-part questions by dispatching run_subtasks "
-        "with parallel=True. Use one tool call with every sub-question "
-        "packed into the 'tasks' list."
-    ),
-    config=config,
-    tasks=TaskConfig(),  # opt in
-)
-
-reply = await coordinator.ask(
-    "In one run_subtasks call, answer: "
-    "(a) tallest waterfall, (b) Eiffel Tower year, (c) boiling point of nitrogen."
-)
-```
-
-`TaskConfig` controls how the sub-task agents are built:
-
-```python
-@dataclass
-class TaskConfig:
-    config: ModelConfig | None = None    # falls back to parent's config
-    prompt: str = "You are a task agent..."
-    include_tools: Iterable[str] | None = None   # None = inherit all parent tools
-    exclude_tools: Iterable[str] = ()
-    extra_tools: Iterable[Callable | Tool] = ()
-```
-
-Common shape — cheaper model for sub-tasks, narrow tool surface:
-
-```python
-TaskConfig(
-    config=worker_config,                  # smaller model
-    prompt="You are a focused worker; one step only.",
-    include_tools=["search", "fetch_url"], # don't expose `summarize` to children
-)
-```
-
-**Sub-task agents are built with `tasks=False`** — they never gain `run_subtask` tools themselves. Recursive delegation is structurally impossible; no depth limit needed.
-
-## Pattern 2 — `Agent.as_tool()`
-
-Expose a whole agent as a tool the LLM can name and call:
+## Recipe — explicit workers
 
 ```python
 from ag2 import Agent
-from ag2.config import AnthropicConfig
+from ag2.config import OpenAIResponsesConfig
 
-config = AnthropicConfig(model="claude-sonnet-4-6")
+config = OpenAIResponsesConfig(model="gpt-4.1-mini")
 
-researcher = Agent("researcher", prompt="Provide concise factual findings.", config=config, tools=[search_tool])
-writer     = Agent("writer", prompt="Turn research into clear prose.", config=config)
+poet = Agent("poet", prompt="Write a 2-line poem on the topic.", config=config)
+fact_checker = Agent("fact_checker", prompt="State one verified fact on the topic.", config=config)
 
 coordinator = Agent(
     "coordinator",
-    prompt="First delegate research, then pass findings to the writer.",
+    prompt="Call task_poet and task_fact_checker in ONE response (parallel), then combine.",
     config=config,
     tools=[
-        researcher.as_tool(description="Research a topic and return findings."),
-        writer.as_tool(description="Write an article. Pass research notes in the context parameter."),
+        poet.as_tool(description="Write a short poem."),
+        fact_checker.as_tool(description="State one fact."),
     ],
 )
+reply = await coordinator.ask("Topic: the Moon")
+print(reply.body)
 ```
 
-The coordinator's LLM sees `task_researcher` and `task_writer`. Each call has two parameters:
+- The LLM sees `task_{agent.name}` with params `objective` (required) and `context` (optional). Override with `name=`.
+- `as_tool(description=..., name=None, stream=None, middleware=())`. `description` is required.
+- **Workers inherit nothing**: pass `config=`, `prompt=`, `tools=` to each worker yourself.
+- Each call runs the worker on a **fresh stream** (no history between calls); the same worker Agent object is reused.
 
-- `objective` (required) — what the sub-task should do.
-- `context` (optional) — relevant info the parent wants to share.
+## Parallel execution and a shared concurrency cap
 
-`as_tool()` accepts:
-
-| Parameter | Description |
-|---|---|
-| `description` | Tool description shown to the LLM (required) |
-| `name` | Override the default `task_{agent.name}` |
-| `stream` | `StreamFactory` for custom sub-task streams (see below) |
-| `middleware` | `ToolMiddleware` callables (e.g. `approval_required`) |
-
-For more control, use `subagent_tool()` directly:
+When the model returns several tool calls in one response, AG2 runs them concurrently — prompt for it explicitly ("call both in one response"). `as_tool()` has no `max_concurrency`; share **one function** tool middleware across delegates:
 
 ```python
-from ag2.tools.subagents import subagent_tool
+import asyncio
+from ag2.middleware import ToolMiddleware
 
-coordinator = Agent("coordinator", config=config, tools=[
-    subagent_tool(researcher, description="Research a topic."),
-])
+def concurrency_limit(limit: int) -> ToolMiddleware:
+    slots = asyncio.Semaphore(limit)
+    async def limited(call_next, event, context):
+        async with slots:
+            return await call_next(event, context)
+    return limited
+
+cap = concurrency_limit(3)   # create inside the running event loop
+tools = [poet.as_tool(description="...", middleware=[cap]), fact_checker.as_tool(description="...", middleware=[cap])]
 ```
 
-## Self-delegation via `as_tool()`
+Use a function/closure, **not** a callable object: tool middleware objects are deep-copied per tool, so each delegate would get its own semaphore.
 
-If you want a named self-delegate (`sub_task` instead of generic `run_subtask`), give an agent its own tool:
+## Observe which worker ran (1.3.0 delegation tree)
+
+Register observers on the **parent**; every descendant event reaches it.
 
 ```python
-analyst = Agent(
-    "analyst",
-    prompt=(
-        "You have search and sub_task tools. "
-        "Only use sub_task when the task has clearly independent parts."
-    ),
-    config=config,
-    tools=[search_tool],
-)
+from ag2 import observer
+from ag2.events import ChildEvent, TaskStarted, ToolCallEvent
 
-analyst.add_tool(
-    analyst.as_tool(
-        description="Break work into a focused sub-task for independent analysis.",
-        name="sub_task",
-    )
-)
+workers: list[str] = []
+
+@observer(TaskStarted)               # lifecycle arrives as itself, with provenance
+def on_start(event: TaskStarted) -> None:
+    if event.path:                   # () = local run; non-empty = a delegation
+        workers.append(event.agent_name)
+
+@observer(ChildEvent)                # everything else a worker does, wrapped
+def on_child(event: ChildEvent) -> None:
+    if isinstance(event.source_event, ToolCallEvent):
+        print(event.agent_name, event.source_event.name, event.source_event.arguments)
+
+coordinator = Agent(..., observers=[on_start, on_child])
+reply = await coordinator.ask("...")
+total = (await reply.usage()).total.total_tokens   # includes every worker
 ```
 
-### Recursion safety
+- `TaskStarted` / `TaskCompleted` / `TaskFailed` / `TaskCancelled` and `UsageEvent` are forwarded **as themselves** (fields `agent_name`, `task_id`, `path`, `objective`; `TaskStarted.parent_tool_call_id`).
+- Model/tool/other events arrive as `ChildEvent` (`TransientChildEvent` for chunks): `.source_event`, `.agent_name`, `.path`. A parent `@observer(ToolCallEvent)` sees only the parent's own calls (`task_poet`, ...).
+- `ChildEvent`s never enter the parent's transcript or trigger its tools.
 
-Self-delegation via `as_tool()` *can* recurse — the child has the same `sub_task` tool, so without a guard the LLM may chain calls indefinitely.
+## Variables across workers
 
-The simplest safe pattern is to **prefer the auto-injected `run_subtask` / `run_subtasks` path** for self-delegation. Sub-tasks spawned that way are constructed with `tasks=False`, so they have no `run_subtask` tools and recursion is structurally impossible.
-
-If you genuinely need recursive `as_tool()` self-delegation, write a tool middleware that increments a depth counter in `context.dependencies` and short-circuits past a threshold. The `subagents` module exports `subagent_tool`, `background_agent_tool`, `persistent_stream`, and `StreamFactory` from `ag2.tools.subagents` — verify the current public surface there before relying on a built-in depth-limiting helper.
-
-## Sub-task streams
-
-By default, each sub-task gets a fresh `MemoryStream` — its history is isolated and starts empty. Context flow:
-
-| What | Behaviour | Why |
-|---|---|---|
-| **Dependencies** | Copied (top-level shallow) | Isolated; treat dependencies as read-only inside subtasks |
-| **Variables** | Copied; **not** synced back to the parent | Concurrent-safe — with siblings running via `asyncio.gather`, last-writer-wins would silently clobber values, so child mutations stay scoped to the child by design |
-| **History** | Fresh stream | Clean context; relevant info passes via the `context` tool parameter |
-| **Tools** | Inherited from parent (filtered by `TaskConfig`) | Sub-tasks need real capabilities to do work |
-
-### `persistent_stream()`
-
-When a sub-agent benefits from seeing its prior calls (e.g. avoid repeating searches), give it a stream that persists across invocations within the parent context:
+Plain variables are **deep-copied** into each worker; changes never flow back. To share, declare at the root:
 
 ```python
-from ag2.tools.subagents import persistent_stream
+from ag2 import Scope, ScopedValue
 
-researcher.as_tool(
-    description="Research a topic",
-    stream=persistent_stream(),
-)
+reply = await coordinator.ask("...", variables={
+    "notebook": ScopedValue([], scope=Scope.SHARED),   # workers' appends visible to root
+    "secret": ScopedValue("x", scope=Scope.LOCAL),     # not passed to workers
+    "draft": [],                                        # copied per worker
+})
+print(reply.context.variables["notebook"])   # read results here, not from your input dict
 ```
 
-Stores stream id in `context.dependencies` keyed by `f"ag:{agent.name}:stream"` and reuses the parent stream's storage backend.
+Shared names must be declared at the root (new shared names below the root raise `ScopeError`). Sharing is not locking — pass an `asyncio.Lock` via dependencies if workers race.
 
-### Custom factory
+## Other delegate shapes
 
-```python
-from ag2 import Agent, Context
-from ag2.streams.redis import RedisStream
-
-def make_redis_stream(agent: Agent, ctx: Context) -> RedisStream:
-    return RedisStream(MY_REDIS_URL, prefix=f"ag2:sub:{agent.name}")
-
-researcher.as_tool(description="Research a topic", stream=make_redis_stream)
-```
+- `background_agent_tool(agent, description=...)` (`ag2.tools.subagents`) — returns a task id immediately; the result arrives later as a follow-up turn; `ask()` still waits for it.
+- `dynamic_agent(available_tools=[...], config=...)` (`ag2.tools.dynamic`) — the LLM composes a worker per objective; spawned workers cannot spawn further.
+- Self-delegation: `agent.add_tool(agent.as_tool(description=..., name="sub_task"))` — can recurse; there is no built-in guard.
 
 ## Going deeper
 
-- Working starter: `assets/research_squad.py` (mirrors `code_examples/05`) — covers both `run_subtasks(parallel=True)` *and* `Agent.as_tool()`, with `TaskStarted` / `TaskCompleted` lifecycle events.
-- Full reference: `website/docs/user-guide/subagents.mdx`.
-- `tasks=` constructor knob (with `KnowledgeConfig`, etc.): `website/docs/user-guide/agent_harness.mdx`.
+- `assets/research_squad.py` — runnable: two workers in parallel, shared cap, lifecycle + `ChildEvent` observers, shared `ScopedValue`, tree usage.
+- `references/delegation_tree.md` — TaskConfig migration table, `event.origin.send(...)`, usage accounting, scope rules, `persistent_stream()` / shared stream / factories.
+- Upstream: `website/docs/user-guide/subagents.mdx`, `advanced/stream.mdx#observe-a-delegation-tree`, `context/variables.mdx#variable-scopes-across-subagents`.
 
 ## Common pitfalls
 
-- **Forgetting to opt in** — `tasks=False` is the default. No `TaskConfig`, no `run_subtask` tools.
-- **Expecting sub-tasks to recurse with `run_subtask`** — they can't. Sub-tasks themselves have `tasks=False`. If you need deeper trees, use `Agent.as_tool()` self-delegation with a manual depth-counter middleware (see "Recursion safety" above).
-- **Sharing mutable variables expecting them to merge** — each sub-task copies the parent's variables, and mutations are **never synced back** to the parent (not even on success). Sibling mutations don't propagate either. Pass any result you need back through the sub-task's return value, not via shared variables.
-- **Treating `dependencies` as scoped per sub-task** — only the top-level dict is copied. Mutable values inside it are still shared by reference. Treat dependencies as read-only inside sub-tasks.
-- **No `description=` on `as_tool()`** — the LLM doesn't know when to call it. Required parameter.
-- **`run_subtasks(parallel=False)` when work is concurrent** — defaults to `True` for a reason; only set `False` when later tasks depend on earlier results.
-- **Confusing `task_{agent.name}` collisions** — pass `name=` to override if you want shorter names or distinct delegates of the same agent.
+- **Expecting worker mutations of plain variables to reach the parent** — they are deep copies. Use `Scope.SHARED`, or return data via the tool result.
+- **Reading the dict you passed to `ask(variables=...)`** — it is copied; read `reply.context.variables`.
+- **Parallel workers on one shared/persistent stream** — calls on one stream run one turn at a time; keep the default fresh stream for parallel workers.
+- **Hard-coding which workers ran** — observe `TaskStarted.agent_name` instead.
+- **Summing `TaskCompleted.usage`** — it is a cumulative snapshot; use `reply.usage()` or `UsageEvent`s (dedupe by `event_id`).

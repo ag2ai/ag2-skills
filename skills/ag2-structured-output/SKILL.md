@@ -1,6 +1,6 @@
 ---
 name: ag2-structured-output
-description: Get a typed Python value back from an AG2 `Agent` instead of free text. Pass `response_schema=` (a Pydantic model, dataclass, primitive, union, `ResponseSchema`, or `@response_schema` validator) and read the parsed result via `await reply.content()`. Use when the user wants validated structured output, classification, extraction, or scoring. Covers `ResponseSchema`, `@response_schema`, `PromptedSchema` (for providers without native structured output), per-turn override, validation retries, and primitive embedding.
+description: Get a typed Python value back from an AG2 `Agent` instead of free text. Pass `response_schema=` (a Pydantic model, dataclass, primitive, union, `ResponseSchema`, or `@response_schema` validator) and read the parsed result via `await reply.content()`. Use when the user wants validated structured output, classification, extraction, or scoring. Covers `ResponseSchema`, `@response_schema`, `PromptedSchema` (for providers without native structured output), `Annotated[str, Field(...)]` constraints, per-turn override, validation retries (`content(retries=)`), and primitive embedding. Works with `OpenAIResponsesConfig`, `AnthropicConfig`, `GeminiConfig` etc.; decision-only providers (`OpenAIDecisionsConfig`, `TypeSafeConfig`) treat the schema as the question. For basic agent setup see `ag2-quickstart`, for tools `ag2-add-custom-tool`.
 license: Apache-2.0
 ---
 
@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from typing import Annotated
 
 from ag2 import Agent
-from ag2.config import OpenAIConfig
+from ag2.config import OpenAIResponsesConfig
 
 class TicketTriage(BaseModel):
     category: Annotated[str, Field(description="e.g. billing, bug, account_access")]
@@ -29,7 +29,7 @@ class TicketTriage(BaseModel):
 agent = Agent(
     "triage",
     prompt="You triage support messages. Be conservative with urgency.",
-    config=OpenAIConfig(model="gpt-4o-mini"),
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
     response_schema=TicketTriage,
 )
 
@@ -45,6 +45,7 @@ print(triage.category, triage.urgency)
 | Type | What you get |
 |---|---|
 | Primitive (`int`, `float`, `bool`) | Bare value, framework wraps in `{"data": ...}` for the API |
+| `Annotated[str, Field(max_length=...)]` | Constrained string (a bare `str` means plain text, no validation) |
 | `dataclass` | Instance of the dataclass |
 | Pydantic `BaseModel` | Instance of the model |
 | Union (`int \| str`, `(int, str)`) | One of the alternatives |
@@ -97,16 +98,15 @@ def extract_listing(
 
 The function also participates in dependency injection — `Context`, `Variable`, `Inject`, `Depends` work the same way as in tools (and don't appear in the JSON schema).
 
-Async validators are supported:
+A single `content: str` parameter means **no JSON schema is sent** — you get the raw model text (it may arrive wrapped in a markdown json code fence). Async validators are supported:
 
 ```python
-import json
+import json, re
 
 @response_schema
-async def fetch_and_validate(content: str) -> dict:
-    data = json.loads(content)
-    data["validated"] = True
-    return data
+async def parse_json(content: str) -> dict:
+    text = re.sub(r"^`{3}(?:json)?\s*|\s*`{3}$", "", content.strip())  # drop a markdown fence
+    return json.loads(text)
 ```
 
 ## `PromptedSchema` — for providers without native structured output
@@ -119,7 +119,7 @@ from ag2 import Agent, PromptedSchema
 agent = Agent("assistant", config=config, response_schema=PromptedSchema(int))
 ```
 
-Wraps any inner schema (type, `ResponseSchema`, `@response_schema` callable). The validation logic stays the same; only the wire format changes.
+Wraps any inner schema (type, `ResponseSchema`, `@response_schema` callable). The validation logic stays the same; only the wire format changes. It does **not** strip markdown fences — some models (e.g. Claude Haiku) wrap the JSON in a markdown code fence and fail validation, so prefer native structured output where the provider has it (OpenAI, Anthropic, Gemini all do).
 
 Custom prompt template:
 
@@ -161,6 +161,12 @@ ResponseSchema(int, name="RawInt", embed=False)              # model must produc
 def parse_rating(value: int) -> int: ...
 ```
 
+OpenAI's native structured output only accepts **object** schemas, so `embed=False` on a primitive returns HTTP 400 there — keep the default, or combine with `PromptedSchema`.
+
+## Decision models
+
+With `OpenAIDecisionsConfig` / `TypeSafeConfig` the schema (`bool`, an `Enum`, an `IntEnum` rubric) *is* the question; the model returns probabilities instead of text. See `website/docs/user-guide/decision_models.mdx`.
+
 ## Going deeper
 
 - Working starter: `assets/recipe_builder.py` (mirrors `code_examples/02`) — Pydantic model + `@tool` + `response_schema=`.
@@ -171,6 +177,7 @@ def parse_rating(value: int) -> int: ...
 - **Reading `reply.body` when you wanted typed output** — `reply.body` is the raw text. `await reply.content()` does the parsing.
 - **Forgetting `await` on `content()`** — it's async; you'll get a coroutine, not the value.
 - **No `description` in the Pydantic field** — the LLM may guess what to put in each field. Add a `Field(description=...)` for every non-obvious key.
+- **Numeric bounds on Anthropic** — `Field(ge=..., le=...)` on `int`/`float` becomes `minimum`/`maximum`, which Anthropic's native schema rejects (HTTP 400). Clamp in a `@response_schema` body instead. String `max_length` is fine.
 - **Provider doesn't support native structured output** — wrap with `PromptedSchema(...)` rather than fighting the API.
 - **`retries=math.inf` in production** — will loop forever on a model that can't comply. Use a finite count.
 - **Per-turn override is single-turn** — passing `response_schema=int` to one `ask()` doesn't change the agent's default. The next turn returns to whatever was set on the constructor.

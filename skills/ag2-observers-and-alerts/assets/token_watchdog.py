@@ -1,12 +1,18 @@
-"""Token watchdog — observers and alerts.
+"""Token watchdog — budget alerts that can halt the agent.
 
-Mirrors website/docs/user-guide/code_examples/04_token_watchdog.mdx. Three observer
-patterns running against a single Agent:
+Observers on one Agent (AG2 1.3.0):
 
-1. TokenMonitor — built-in, tallies usage and warns above a threshold.
-2. LoopDetector — built-in, spots repetitive tool calls.
-3. A hand-written BaseObserver that subscribes to ObserverAlert and prints
-   a formatted dashboard line every time anything alerts.
+1. TokenMonitor — built-in; sums UsageEvents and emits WARNING / CRITICAL alerts.
+2. LoopDetector — built-in; WARNING on repeated identical tool calls.
+3. alert_console — an @observer that prints every ObserverAlert.
+4. escalate — turns CRITICAL into FATAL, because only FATAL alerts halt.
+
+AssemblerMiddleware + AlertPolicy shows alerts to the model and converts FATAL into
+a HaltEvent; HaltCheckMiddleware then short-circuits the next model call of the
+turn with "HALTED: ...". The tool round-trip guarantees a second model call, so
+the halt is visible within a single ask().
+
+Requires ``pip install "ag2[anthropic]"`` and ``ANTHROPIC_API_KEY``.
 
 Run::
 
@@ -15,68 +21,68 @@ Run::
 
 import asyncio
 
-from ag2 import Agent
-from ag2.annotations import Context
-from ag2.config import GeminiConfig
-from ag2.events import BaseEvent
-from ag2.events.alert import ObserverAlert
-from ag2.observers import BaseObserver, LoopDetector, TokenMonitor
-from ag2.stream import MemoryStream
-from ag2.watch import EventWatch
+from ag2 import Agent, Context, observer, tool
+from ag2.assembly import AssemblerMiddleware
+from ag2.config import AnthropicConfig
+from ag2.events import HaltEvent, ObserverAlert, Severity
+from ag2.middleware import HaltCheckMiddleware, Middleware
+from ag2.observers import LoopDetector, TokenMonitor
+from ag2.policies import AlertPolicy
+
+alerts: list[ObserverAlert] = []
+halts: list[HaltEvent] = []
 
 
-def section(title: str) -> None:
-    print(f"\n── {title} ───")
+@observer(ObserverAlert)
+def alert_console(event: ObserverAlert) -> None:
+    alerts.append(event)
+    print(f"    [{event.severity.upper():<8}] {event.source}: {event.message}")
 
 
-class AlertConsole(BaseObserver):
-    """Watches the stream for ObserverAlerts and prints them to stdout."""
+@observer(ObserverAlert)
+async def escalate(event: ObserverAlert, context: Context) -> None:
+    """Only FATAL halts. Re-emit CRITICAL budget alerts as FATAL."""
+    if event.severity == Severity.CRITICAL:
+        await context.send(
+            ObserverAlert(source="escalator", severity=Severity.FATAL, message=f"budget exceeded: {event.message}")
+        )
 
-    def __init__(self) -> None:
-        super().__init__("alert-console", watch=EventWatch(ObserverAlert))
-        self.seen: list[ObserverAlert] = []
 
-    async def process(self, events: list[BaseEvent], ctx: Context) -> None:
-        for event in events:
-            if isinstance(event, ObserverAlert):
-                self.seen.append(event)
-                print(
-                    f"    [{event.severity.upper():<8}] {event.source}: {event.message}"
-                )
-        return None
+@observer(HaltEvent)
+def on_halt(event: HaltEvent) -> None:
+    halts.append(event)
+
+
+@tool
+def word_count(text: str) -> int:
+    """Count the words in a text."""
+    return len(text.split())
 
 
 async def main() -> None:
-    config = GeminiConfig(model="gemini-3-flash-preview", temperature=0)
-
-    section("Watchdog — low thresholds so observers trip on a single ask")
-
-    token_monitor = TokenMonitor(warn_threshold=50, alert_threshold=5_000)
-    loop_detector = LoopDetector(window_size=5, repeat_threshold=2)
-    console = AlertConsole()
-
-    stream = MemoryStream()
+    # Deliberately tiny thresholds so a single ask trips them.
+    token_monitor = TokenMonitor(warn_threshold=30, alert_threshold=50)
 
     agent = Agent(
         "writer",
-        prompt=(
-            "Write prose the user asks for. Favour variety — never repeat the same sentence twice."
-        ),
-        config=config,
-        observers=[token_monitor, loop_detector, console],
+        prompt="Write what the user asks for, then call word_count on it and report the count.",
+        config=AnthropicConfig(model="claude-haiku-4-5"),
+        tools=[word_count],
+        observers=[token_monitor, LoopDetector(window_size=5, repeat_threshold=2), alert_console, escalate, on_halt],
+        middleware=[
+            Middleware(AssemblerMiddleware, policies=[AlertPolicy()]),
+            Middleware(HaltCheckMiddleware),
+        ],
     )
 
-    reply = await agent.ask(
-        "Write three distinct 30-word paragraphs about springtime in Kyoto.",
-        stream=stream,
-    )
+    reply = await agent.ask("Write a 200-word story about a robot.")
 
     print()
-    print("Final reply (truncated):")
-    print("   ", (reply.body or "")[:240], "...")
-    print()
-    print(f"Total tokens tracked by TokenMonitor: {token_monitor.total_tokens}")
-    print(f"Alerts emitted this run:              {len(console.seen)}")
+    print("Reply (truncated):", (reply.body or "")[:160])
+    print(f"Tokens tracked by TokenMonitor: {token_monitor.total_tokens}")
+    print(f"ALERTS: {len(alerts)}")
+    print(f"HALTS:  {len(halts)}")
+    print("DONE")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 ## Compatibility
 
-These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.0.0**).
+These skills document the **AG2 API** (the `ag2` namespace) only — not [AG2 Classic](https://github.com/ag2ai/ag2) (the `autogen` namespace). They are verified against a specific upstream AG2 commit, pinned in [`COMPATIBILITY.json`](COMPATIBILITY.json) (currently **ag2 1.3.0**). APIs deprecated in 1.3 and removed in 1.4 (`OpenAIConfig` as Chat Completions, `Agent(knowledge=)`, `Agent(assembly=)`, `TaskConfig`, `Agent.task()`, `AnthropicConfig(temperature=)` and other Anthropic sampling params) are not taught; `ag2-overview` lists their replacements.
 
 ## Installation
 
@@ -68,7 +68,8 @@ Build a minimal AG2 `Agent` end to end — pick a model provider, set a prompt, 
 
 **Topics covered:**
 
-- `OpenAIConfig`, `AnthropicConfig`, `GeminiConfig`, `OllamaConfig`
+- `OpenAIResponsesConfig` (OpenAI default), `OpenAICompletionsConfig` (Chat Completions / OpenAI-compatible endpoints), `AnthropicConfig`, `GeminiConfig`, `OllamaConfig`, `MistralConfig`, Bedrock, xAI
+- `reply.body` vs `await reply.content()`
 - Env-var fallback for API keys
 - Multi-turn `reply.ask()` pattern
 
@@ -112,7 +113,7 @@ Give an AG2 `Agent` the ability to run shell commands.
 **Topics covered:**
 
 - `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider)
-- Provider-native `ShellTool` (Anthropic / OpenAI execution)
+- Provider-native shell: `ShellTool` (OpenAI) or `AnthropicBashTool` (Anthropic)
 - Sandboxing — `allowed`, `blocked`, `ignore`, `readonly`
 
 ### ag2-structured-output
@@ -161,11 +162,11 @@ Persist agent state across runs, shape what the LLM sees per turn, and cap histo
 **Topics covered:**
 
 - `KnowledgeStore` (memory / sqlite / disk / redis)
-- `KnowledgeConfig` (`store=`, `compact=`, `aggregate=`, `bootstrap=`)
+- `KnowledgePlugin` (`plugins=[KnowledgePlugin(store, compact=, aggregate=, bootstrap=)]`), store extras (`DiskKnowledgeStore` needs `watchdog`, Redis needs `ag2[redis]`)
 - Aggregation — `WorkingMemoryAggregate`, `ConversationSummaryAggregate`
-- Assembly policies — `WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy`
+- Assembly policies via `Middleware(AssemblerMiddleware, policies=[...])` — `WorkingMemoryPolicy`, `EpisodicMemoryPolicy`, `ConversationPolicy`, `SlidingWindowPolicy`, `TokenBudgetPolicy`, `AlertPolicy`
 - Compaction — `TailWindowCompact`, `SummarizeCompact`
-- Opt-outs — `KnowledgeConfig(expose_tool=False, write_event_log=False)`, `DefaultBootstrap(mention_tool=False)`
+- Opt-outs — `KnowledgePlugin(store, expose_tool=False, write_event_log=False)`, `DefaultBootstrap(mention_tool=False)`
 - Lifecycle events on the stream — `AggregationStarted` / `AggregationFailed` / `CompactionStarted` / `CompactionFailed` / `EventLogFailed`
 
 ### ag2-middleware
@@ -179,7 +180,8 @@ Intercept the AG2 agent loop with `BaseMiddleware`.
 **Topics covered:**
 
 - Hooks — `on_turn`, `on_llm_call`, `on_tool_execution`, `on_human_input`
-- Built-ins — `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware`
+- Custom middleware is registered as a class or `Middleware(Cls, **kw)`; getting state out of per-turn instances
+- Built-ins — `LoggingMiddleware`, `RetryMiddleware`, `HistoryLimiter`, `TokenLimiter`, `TelemetryMiddleware`, `AssemblerMiddleware` + `HaltCheckMiddleware`, `statusbar_middleware`
 - Per-tool hooks (see also `ag2-add-custom-tool`)
 
 ### ag2-observers-and-alerts
@@ -195,23 +197,23 @@ Monitor an AG2 agent's stream — log events, detect repeated tool calls, track 
 - `@observer(...)` (stateless), `BaseObserver` (stateful)
 - Built-ins — `TokenMonitor`, `LoopDetector`
 - `Watch` primitives — `EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`
-- `ObserverAlert` (`Severity.INFO/WARNING/CRITICAL/FATAL`), `AlertPolicy`, `HaltEvent`
+- `ObserverAlert` (`Severity.INFO/WARNING/CRITICAL/FATAL` — only FATAL halts), `AlertPolicy` + `HaltCheckMiddleware`, `HaltEvent`
 
 ### ag2-subagent-delegation
 
-Single-agent recursion and parallel fan-out within one AG2 `Agent`.
+Coordinator agent delegating to explicit worker agents, including parallel fan-out — no hub required.
 
 **Use when:**
 
-- One coordinator wants to break work into its own sub-tasks
+- One coordinator delegates to specialist workers
 - Fanning out concurrent sub-tasks from a single agent
 - Calling a specialist agent as a lightweight tool (no hub, no registry)
 
 **Topics covered:**
 
-- Auto-injected `run_subtask` / `run_subtasks(parallel=True)` (opt in via `tasks=TaskConfig(...)`)
-- `Agent.as_tool()` for invoking named delegates from inside another agent
-- Context flow, recursion safety
+- `Agent.as_tool()` and subagent tools for named workers; parallel fan-out with a shared concurrency cap
+- Observing which worker ran (`TaskStarted`, `ChildEvent`), tree-wide usage, shared `Scope`/`ScopedValue` variables
+- Migration from the deprecated `TaskConfig` / `run_subtasks`
 - `persistent_stream` for sub-task history
 
 > For **two or more agents actually collaborating** through a shared hub with registry, durable channels, governance, and turn-taking, use the **`ag2-network-*`** skills below instead.
@@ -312,7 +314,7 @@ Govern an AG2 multi-agent network — identity, rules, expectations, audit, and 
 - `AuthAdapter` / `AuthRegistry` registration
 - Channel-level `Expectation`s with `audit` / `warn` / `auto_close` handlers
 - The hub's append-only audit log and `AUDIT_KIND_*` constants
-- Task observation via `agent.task(..., capability=...)` and `TaskMirror`
+- Task observation via `Task(owner_id=..., spec=TaskSpec(capability=...))` or `ask(..., capability=)` and `TaskMirror`
 - `ObservedStat` and reading the track record
 
 ### ag2-network-tools-and-views
@@ -352,7 +354,7 @@ Pause an AG2 `Agent` mid-run to collect human input, or gate a tool call with ap
 **Topics covered:**
 
 - `context.input()` for in-run human prompts
-- `approval_required()` middleware
+- `approval_required()` middleware; programmatic approvers that see tool name + arguments via `ToolApprovalRequest`
 
 ### ag2-ag-ui
 
@@ -365,7 +367,8 @@ Expose an AG2 `Agent` over the AG-UI protocol so a frontend (CopilotKit, custom 
 **Topics covered:**
 
 - `AGUIStream(agent)` wrapper
-- FastAPI mounting via `stream.dispatch(...)` or `stream.build_asgi()`
+- FastAPI mounting via `stream.dispatch(...)` or `stream.build_asgi()`; AG-UI 1.0 request body (`read_run_input`) and the event types actually emitted
+- Frontend tools, interrupts + resume, channels
 
 ### ag2-telemetry
 
@@ -412,7 +415,7 @@ Evaluate, test, and track an AG2 agent offline — run a suite, grade the answer
 - `Suite.from_list` + `run_agent`; the `RunResult` scorecard (`summary`, `pass_rate`, `score_stats`, `value_counts`)
 - Prebuilt scorers — `final_answer_matches`, `tool_called`, `no_tool_errors`, `token_budget`, `failure_attribution`, `agent_judge`
 - Custom `@scorer` + the return-type → aggregation rule (bool → pass_rate / num → score_stats / str → value_counts)
-- CI with deterministic `TestConfig` cassettes (agent factory + `model_config`)
+- CI with deterministic `TestConfig` cassettes (an `Agent` instance + `model_config`, not a factory)
 - Persistence — `store_dir`, `load_run`, `diff().regressions`; grading existing traces with `evaluate_traces`
 
 **See also:** `ag2-eval-comparison` for head-to-head and leaderboard comparison.
@@ -450,8 +453,10 @@ Host an MCP server that exposes an AG2 `Agent` (plus prompts and resources) to M
 - `MCPServer(agent)`, `run_stdio()` / ASGI HTTP, `SessionConfig` (multi-turn history)
 - `Prompt` / `PromptArgument` / `PromptMessage`, `Resource` / `ResourceTemplate`
 - `AskContext` / `ContextProvider` per-request injection, `build_ask_tool`, OAuth2 `security=`
+- mcp SDK 2.x: `@mcp_tool` with `MCPRequestContext`, `Elicit` / `Sample` / `ListRoots`, `MCPApp`, `TransportConfig`
+- Client side: `MCPToolkit` with `MCPServerConfig` / `MCPStdioServerConfig`
 
-**See also:** `ag2-use-builtin-tools` (`MCPServerTool`) for *consuming* external MCP servers (client side).
+**See also:** `ag2-use-builtin-tools` for provider-side `MCPServerTool` and other shipped tools.
 
 ### ag2-a2a
 
@@ -466,11 +471,12 @@ Expose an AG2 `Agent` over the Agent-to-Agent (A2A) protocol so any A2A-complian
 
 - `A2AServer(agent)` + `build_jsonrpc` / `build_rest` / `build_grpc`; `AgentCard` via `build_card`
 - Consuming a remote A2A agent — `A2AConfig(card_url=...)`
-- Security schemes (`bearer_scheme` / `api_key_scheme` / `oauth2_scheme` / `require`), in-process `testing` helpers
+- Security schemes (`bearer_scheme` / `api_key_scheme` / `oauth2_scheme` / `require`), card signing, secure gRPC, in-process `testing` helpers
+- In-process serve + consume example (uvicorn)
 
 ### ag2-acp
 
-Drive external CLI coding agents — Claude Code, Codex, OpenCode — as first-class AG2 `Agent`s over the Agent Client Protocol (ACP).
+Drive external CLI coding agents — Claude Code, Codex, OpenCode — as first-class AG2 `Agent`s over the Agent Client Protocol (ACP), or serve an AG2 agent to ACP clients.
 
 **Use when:**
 
@@ -482,6 +488,7 @@ Drive external CLI coding agents — Claude Code, Codex, OpenCode — as first-c
 - `ClaudeCodeConfig` / `CodexConfig` / `OpenCodeConfig` (`ACPConfig` presets); one `ask()` = one ACP prompt turn
 - Observing the stream: `ModelReasoning`, `BuiltinToolCallEvent`, `ACPPlan` / `ACPModeChange` / `ACPAvailableCommands`
 - Permission policies + HITL, `fs_root` confinement, timeouts, lifecycle (`aclose()`), in-process testing via `fake_acp_config`
+- Serving side: `ACPAgent`, `ACPRemoteConfig`, `KiloCodeConfig`, auth providers
 
 **See also:** `ag2-a2a` / `ag2-mcp` for exposing AG2 agents *to* other systems; `ag2-hitl` for the human-approval plumbing `permission_policy="ask"` uses.
 
@@ -499,6 +506,7 @@ Build realtime voice / live-audio agents — bidirectional speech in, synthesize
 - `LiveAgent` + `agent.run()`; Gemini Live (`GeminiRealTimeConfig`) and OpenAI Realtime (`OpenAIRealTimeConfig`)
 - Audio I/O over the sound card — `SoundDeviceRecorder` / `SoundDevicePlayer`
 - Speech-to-text (`OpenAITranscriber` / `OpenAITranslationTranscriber`, `.pipe(agent)`), TTS (`OpenAITTSConfig`), `TTSObserver`
+- `CascadeConfig` (STT → LLM → TTS), turn detectors, ElevenLabs and Mistral STT/TTS
 
 ## Skill Structure
 

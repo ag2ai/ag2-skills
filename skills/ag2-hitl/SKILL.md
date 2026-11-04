@@ -1,6 +1,6 @@
 ---
 name: ag2-hitl
-description: Pause an AG2 `Agent` mid-run to collect human input via `context.input()`, or gate a tool call with `approval_required()` middleware. Use when the user wants the agent to ask for confirmation, request missing info (passwords, API keys, data), or have a human approve sensitive / irreversible / expensive tool calls (sending emails, deleting records, payments).
+description: "Pause an AG2 `Agent` mid-run for human input via `context.input()` + `hitl_hook`, or gate a tool call with `approval_required()` (`ApprovalRequired`) tool middleware. The hook receives a `HumanInputRequest`; approvals arrive as `ToolApprovalRequest` (1.3.0) carrying `tool_call_id`, so a programmatic approver can look up the tool name and arguments. Covers timeouts and `HumanInputError` (`HumanInputNotProvidedError`, `HumanInputFailedError`, `HumanInputTimeoutError`), 'always' approvals, and policy-only gates without a human. Use when the agent must ask for confirmation, request missing info, or have a human/policy approve sensitive, irreversible or expensive tool calls. See `ag2-middleware` for `on_human_input`, `ag2-subagent-delegation` for HITL in workers."
 license: Apache-2.0
 ---
 
@@ -8,136 +8,108 @@ license: Apache-2.0
 
 ## When to use
 
-- The agent should **ask for confirmation** before doing something risky.
-- The agent needs **information from the user mid-conversation** (a password, an API key, missing context).
-- A specific **tool call should require human approval** before it runs (irreversible / expensive / sensitive).
-- Quality assurance — show a draft, get human edits/approval before finalising.
-
-Two distinct mechanisms — pick by intent:
-
 | Need | Use |
 |---|---|
-| Tool asks an open question and waits for a typed answer | `context.input()` from inside the tool + `hitl_hook` on the agent |
-| Approve / deny a specific tool call before its body runs | `approval_required()` tool middleware |
+| A tool asks an open question and waits for a typed answer | `await context.input(...)` in the tool + `hitl_hook` on the agent |
+| Approve / deny a specific tool call before its body runs | `approval_required()` tool middleware + `hitl_hook` |
+| Automatic allow/deny by rule, no human at all | a plain tool middleware function (Pattern 3) |
 
 ## Pattern 1 — `context.input()` for open questions
 
-A tool requests input via `Context.input(message, timeout=...)`. The agent must have a `hitl_hook` that knows how to collect that input.
-
 ```python
 from ag2 import Agent, Context, tool
+from ag2.config import OpenAIResponsesConfig
 from ag2.events import HumanInputRequest, HumanMessage
 
 @tool
-async def execute_query(context: Context) -> str:
-    answer = await context.input(
-        "Are you sure you want to run this query? (yes/no)",
-        timeout=60.0,
-    )
+async def execute_query(query: str, context: Context) -> str:
+    """Run a SQL query after the user confirms."""
+    answer = await context.input(f"Run this query? (yes/no)\n{query}", timeout=60.0)
     if answer.strip().lower() != "yes":
         return "Query cancelled."
     return "Query executed successfully."
 
 def hitl_hook(event: HumanInputRequest) -> HumanMessage:
-    print(f"Agent asks: {event.content}")
-    return HumanMessage(content=input("Your answer: "))
+    return HumanMessage(content=input(f"{event.content}\n> "))
 
-agent = Agent("dba", tools=[execute_query], hitl_hook=hitl_hook)
+agent = Agent("dba", config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
+              tools=[execute_query], hitl_hook=hitl_hook)
 ```
 
-The hook receives a `HumanInputRequest` (the prompt is in `event.content`) and returns either a `HumanMessage` or a plain `str` (the framework wraps a `str` via `HumanMessage.ensure_message`). Both `def` and `async def` hooks are supported.
+- The hook gets `HumanInputRequest` (`.content`, `.id`, `.timeout`, `.task_id` when a worker asks) and returns `HumanMessage` or `str`. Sync or async. Supports DI (`Context`, `Variable`, `Inject`, `Depends`).
+- Or register with `@agent.hitl_hook` (overrides a constructor hook with a `RuntimeWarning` — pick one place).
+- `timeout=` defaults to **None** (wait forever) and covers the hook call itself.
 
-You can also register the hook after construction:
-
-```python
-agent = Agent("dba", tools=[execute_query])
-
-@agent.hitl_hook
-async def async_hitl_hook(event: HumanInputRequest) -> HumanMessage:
-    answer = await collect_from_ui(event.content)
-    return HumanMessage(content=answer)
-```
-
-The decorator overrides any hook set in the constructor — but if one was already set (e.g. via the constructor), applying `@agent.hitl_hook` emits a `RuntimeWarning` (`"You already set HITL hook, provided value overrides it"`). Set the hook in exactly one place to avoid the warning.
-
-The hook participates in dependency injection — `Context`, `Inject`, `Variable`, `Depends` work the same as in tools.
-
-If `context.input()` is called and no hook is registered, the framework raises `HumanInputNotProvidedError`.
-
-## Pattern 2 — `approval_required()` for specific tool calls
-
-Gate a single tool with the built-in approval middleware. The user is prompted before the tool body runs and can approve or deny.
+## Pattern 2 — `approval_required()` with a programmatic approver
 
 ```python
-from ag2 import Agent, tool
-from ag2.config import OpenAIConfig
+from ag2 import Agent, Context, tool
+from ag2.config import OpenAIResponsesConfig
+from ag2.events import HumanInputRequest, ToolApprovalRequest, ToolCallEvent
 from ag2.middleware import approval_required
 
-@tool(middleware=[approval_required()])
-def delete_account(user_id: str) -> str:
-    """Deletes a user account by ID permanently."""
-    return f"Account {user_id} deleted."
+@tool(middleware=[approval_required(timeout=120)])
+def delete_file(path: str) -> str:
+    """Delete a file."""
+    return f"deleted {path}"
 
-agent = Agent(
-    "support",
-    config=OpenAIConfig(model="gpt-4o-mini"),
-    tools=[delete_account],
-    hitl_hook=lambda event: input(event.content),
-)
+async def approver(event: HumanInputRequest, context: Context) -> str:
+    if isinstance(event, ToolApprovalRequest):            # 1.3.0: names the gated call
+        call = await context.stream.history.where(ToolCallEvent.id == event.tool_call_id).first()
+        if call and call.serialized_arguments.get("path", "").startswith("/tmp/"):
+            return "y"                                     # y / yes / 1 approve; "always" too
+        return "n"                                         # anything else denies
+    return "n"                                             # ordinary context.input() questions: answer from your UI/queue, not blocking input()
+
+agent = Agent("ops", config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
+              tools=[delete_file], hitl_hook=approver)
 ```
 
-When the agent calls `delete_account`, the user sees (with the default `allow_always=True`):
+- `approval_required(message=None, denied_message="User denied the tool call request", *, timeout=None, allow_always=True)` returns an `ApprovalRequired` instance (`.describe()` reports its settings).
+- `ToolApprovalRequest` is a `HumanInputRequest` subclass with `tool_call_id`; `call.name` / `call.serialized_arguments` (dict) / `call.arguments` (JSON str) come from the matching `ToolCallEvent`. `event.content` is the human-readable prompt (`{tool_name}`, `{tool_arguments}` interpolated).
+- On denial the model receives `denied_message` and continues; the tool body never runs.
+- `"always"` approves this and later calls of the **same tool implementation** in this conversation (stored under a reserved `ag:` variable; not inherited by sub-agents, stripped over A2A/AG-UI/etc.).
+- Over AG-UI with no hook, the approval becomes a client interrupt instead (see `ag2-ag-ui`).
 
-```
-Agent wants to call the tool:
-`delete_account`, {"user_id": "abc-123"}
-Please approve or deny this request.
-Y/N/Always?
-```
+## Pattern 3 — policy gate, no human
 
-The answer is lowercased before matching. `y`, `yes`, or `1` approve this one call; `always` approves this call and all subsequent calls of the same tool in the same context (it sets a per-context bypass flag). Anything else denies it; the agent receives `denied_message` (default `"User denied the tool call request"`) and can adjust. The default `timeout` is **30** seconds. Set `allow_always=False` to drop the "Always" option (the prompt then shows just `Y/N?`).
-
-`approval_required()` calls `context.input()` under the hood, so it **also requires a `hitl_hook`** — without one you'll get a runtime error.
-
-### Custom prompt
+If no person is involved, skip HITL and write a tool middleware; it sees the call directly:
 
 ```python
-@tool(middleware=[approval_required(
-    message="⚠️ Run `{tool_name}` with {tool_arguments}? (y/n)",
-    denied_message="Operation blocked by user.",
-)])
-def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email to the given address."""
-    ...
+from ag2.events import ToolResultEvent
+
+async def only_tmp(call_next, event, context):
+    if not event.serialized_arguments.get("path", "").startswith("/tmp/"):
+        return ToolResultEvent.from_call(event, result="Denied by policy: only /tmp/ may be deleted.")
+    return await call_next(event, context)
+
+@tool(middleware=[only_tmp])
+def delete_file(path: str) -> str: ...
 ```
 
-`{tool_name}` and `{tool_arguments}` are interpolated.
+## When nobody can answer
 
-## Pairing both patterns
+Every way `context.input()` fails **ends the turn** (it is not recorded as a tool error the model could route around):
 
-For a tool that both gathers input mid-run and requires approval:
+| What happened | Raised from `agent.ask()` |
+|---|---|
+| No `hitl_hook` registered | `HumanInputNotProvidedError` |
+| The hook raised | `HumanInputFailedError` (original on `.cause`) |
+| No answer within `timeout=` | `HumanInputTimeoutError` |
 
-```python
-@tool(middleware=[approval_required()])
-async def schedule_report(name: str, context: Context) -> str:
-    """Schedule a report — asks the user for the cadence, then runs after approval."""
-    cadence = await context.input("How often? (daily / weekly / monthly)")
-    return f"Scheduled '{name}' on {cadence} cadence."
-```
-
-The approval middleware runs first (outermost). Once approved, the tool body executes and `context.input()` triggers a second human interaction.
+All subclass `HumanInputError` (`ag2.exceptions`). Catch it in the tool to carry on, or have the hook return `"n"` as a policy. The gated tool never runs in any of these cases, and the stream stays reusable for the next `ask()`.
 
 ## Going deeper
 
-- Source docs: `website/docs/user-guide/context/human_in_the_loop.mdx` (`context.input`, `hitl_hook`), `website/docs/user-guide/tools/approval_required.mdx` (`approval_required` middleware).
-- Tool middleware in general — `website/docs/user-guide/tools/tool_middleware.mdx`. See also `ag2-middleware` for agent-wide HITL interception via `BaseMiddleware.on_human_input()`.
-- HITL hooks support dependency injection identically to tools — see `../ag2-add-custom-tool/references/dependency_injection.md`.
+- Upstream: `website/docs/user-guide/context/human_in_the_loop.mdx`, `website/docs/user-guide/tools/approval_required.mdx`, `website/docs/user-guide/tools/tool_middleware.mdx`.
+- Agent-wide interception of every request: `BaseMiddleware.on_human_input()` (`ag2-middleware`).
+- Tool middleware syntax / DI: `ag2-add-custom-tool`.
 
 ## Common pitfalls
 
-- **`approval_required()` without a `hitl_hook`** — the middleware calls `context.input()`, so the agent needs a hook. You'll see `HumanInputNotProvidedError` otherwise.
-- **Forgetting to handle the denial path** — `context.input()` returns whatever the hook returns. If you only branch on "yes", any other answer (including silence/default) lets the operation continue. Always validate.
-- **Sync `input()` in an async UI** — `input()` blocks the event loop. Use an async hook (`async def`) and an async input collector (web socket, message queue) for any non-CLI app.
-- **No timeout** — `context.input(prompt)` can wait forever. Pass `timeout=60.0` (seconds) for any production path.
-- **Decorator hook overrides constructor hook** — if you set both, the decorator wins and emits a `RuntimeWarning`. Pick one place.
-- **Expecting `HumanMessage` to flow into the conversation history automatically** — it does for the requesting tool's return value, but mid-run inputs collected via `ctx.input()` are not separate user turns. They live in the tool's scope.
+- **`approval_required()` without a `hitl_hook`** — `HumanInputNotProvidedError` ends the turn (except when served over AG-UI).
+- **Parsing `event.content` to find the tool** — use `ToolApprovalRequest.tool_call_id` + history lookup (above).
+- **Only branching on "yes"** in `context.input()` — validate the answer; anything unexpected should deny.
+- **Blocking `input()` in an async app** — use an async hook backed by a queue/websocket.
+- **Expecting the old 30 s default timeout** — default is now `None`; set `timeout=` for production.
+- **Sync tool side effects** — a sync tool already running in a thread cannot be cancelled when the turn ends; ask for approval before the side effect.

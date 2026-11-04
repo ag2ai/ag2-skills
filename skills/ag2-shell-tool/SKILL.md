@@ -1,187 +1,95 @@
 ---
 name: ag2-shell-tool
-description: Give an AG2 `Agent` the ability to run shell commands. Covers `SandboxShellTool` (client-side `subprocess` via `LocalEnvironment`, works with any provider) and the provider-native `ShellTool` (OpenAI Responses execution). Use when the user wants the Agent to execute commands, build/test code, manage files, or operate on a workspace. Always pair with sandboxing — `allowed`, `blocked`, `ignore`, or `readonly`.
+description: Give an AG2 `Agent` the ability to run shell commands or code. Covers `SandboxShellTool` (client-side, any provider) with execution backends `LocalEnvironment`, `DockerEnvironment`, `DaytonaEnvironment`, `TenkiEnvironment`; command filtering and restricted mode (`allowed`, `blocked`, `ignore`, `readonly`); `AnthropicBashTool` (Anthropic's `bash_20250124`, executed locally by AG2); the provider-hosted `ShellTool` (OpenAI Responses only, needs `ContainerAutoEnvironment` / `ContainerReferenceEnvironment` + `NetworkPolicy`); and `SandboxCodeTool` (`run_code`). Use when the agent should execute commands, build/test code, or operate on a workspace. For provider-run code execution (`CodeExecutionTool`) and other built-in tools see `ag2-use-builtin-tools`; to gate commands behind human approval see `ag2-hitl`.
 license: Apache-2.0
 ---
 
 # Shell tools
 
-## When to use
+## When to use — pick one deliberately
 
-Two distinct tools, both named "shell" — pick deliberately:
+| Need | Use |
+|---|---|
+| Shell on **any** provider, you own where it runs | `SandboxShellTool` (default choice) |
+| Claude using the bash tool it was trained on, executed on your side | `AnthropicBashTool` (Anthropic only) |
+| Throwaway container hosted by OpenAI, no local access | `ShellTool(environment=ContainerAutoEnvironment())` (OpenAI Responses, gpt-5.2+) |
+| A `run_code(code, language)` tool instead of raw shell | `SandboxCodeTool(env)` |
 
-| Need | Use | Why |
-|---|---|---|
-| Works with any model provider; full control over what runs and where | `SandboxShellTool` | Client-side `subprocess` (via `LocalEnvironment`). You own the sandbox. |
-| Provider-managed sandbox (container, network policy) on OpenAI Responses | `ShellTool` | Server-side execution. No local subprocess. |
+All take the same backends (`LocalEnvironment`, `DockerEnvironment`, `DaytonaEnvironment`, `TenkiEnvironment`) except `ShellTool`.
 
-**`SandboxShellTool` is the workhorse**. Reach for it unless you specifically need provider-managed isolation and you're on OpenAI Responses.
-
-## 60-second recipe — `SandboxShellTool`
+## Recipe — `SandboxShellTool`
 
 ```python
 from ag2 import Agent
-from ag2.config import AnthropicConfig
+from ag2.config import OpenAIResponsesConfig
 from ag2.tools import SandboxShellTool
 
 agent = Agent(
     "coder",
     "You write and run Python code.",
-    config=AnthropicConfig(model="claude-sonnet-4-6"),
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),   # any provider works
     tools=[SandboxShellTool()],
 )
-
-reply = await agent.ask("Write a hello world script and run it.")
+reply = await agent.ask("Write a hello world script with python3 and run it.")
 print(await reply.content())
 ```
 
-`SandboxShellTool` is provider-agnostic — swap `AnthropicConfig` for `OpenAIConfig(model="gpt-4.1")`, `GeminiConfig(model="gemini-2.5-pro")`, etc. Make sure you've installed the matching `ag2[<provider>]` extra and set the matching env var (see `ag2-quickstart` → Prerequisites).
+No argument → `LocalEnvironment()`: a temp dir (prefix `ag2_sandbox_`) deleted at exit. `LocalEnvironment("/path")` uses (and creates) that dir and keeps it. `tool.workdir` gives the resolved dir. Files persist across `ask()` / `reply.ask()` turns.
 
-With no arguments, `SandboxShellTool` defaults to a `LocalEnvironment()` that creates a temporary working directory (prefixed `ag2_sandbox_`) and cleans it up when the process exits. Pass a `LocalEnvironment` with a path to use a specific directory:
-
-```python
-from pathlib import Path
-from ag2.tools import LocalEnvironment, SandboxShellTool
-
-SandboxShellTool(LocalEnvironment("/tmp/my_project"))
-SandboxShellTool(LocalEnvironment(Path("/tmp/my_project")))
-```
-
-When a path is given, the directory is created if it does not exist and is **not** deleted on exit. Inspect the resolved working directory via `tool.workdir`.
-
-## Sandboxing (`LocalEnvironment` + tool-level filters)
-
-For anything beyond a throwaway demo, lock down what the agent can do. The **environment** (`LocalEnvironment`) decides *where* commands run and carries backend config (`path`, `timeout`, `max_output`, `env_vars`); the **tool** (`SandboxShellTool`) decides the agent-facing policy (`allowed` / `blocked` / `ignore` / `readonly`). Filtering is applied in this order on every call:
-
-1. `allowed` — if set, the command must match at least one prefix. In this restricted mode, shell operators (`>`, `>>`, `|`, `;`, `&&`, `||`, `` ` ``, `$(`) are also rejected.
-2. `blocked` — if set, the command must not match any prefix. Best-effort only (head-command prefix match; chaining can bypass it).
-3. `ignore` — literal path tokens in the command are checked against gitignore-style patterns; matches return `"Access denied: <path>"`.
-4. Execute via the environment's `subprocess`.
+## Lock it down
 
 ```python
 from ag2.tools import LocalEnvironment, SandboxShellTool
 
 sh = SandboxShellTool(
-    LocalEnvironment(
-        path="/tmp/my_project",
-        timeout=30,
-        max_output=50_000,
-    ),
-    allowed=["python", "uv run", "git"],
-    blocked=["rm -rf", "curl", "wget"],
-    ignore=["**/.env", "*.key", "secrets/**"],
+    LocalEnvironment("/srv/project", timeout=30, max_output=50_000, env_vars={"CI": "1"}),
+    allowed=["python", "uv run", "git log", "ls", "cat"],   # prefix match, word by word
+    ignore=["**/.env", "*.key", "secrets/**"],              # path words matching -> "Access denied: <path>"
 )
+ro = SandboxShellTool(LocalEnvironment("/srv/project"), readonly=True)
 ```
 
-### Read-only mode
+**Restricted mode (1.3):** setting *any* of `allowed`, `blocked`, `ignore`, `readonly` splits the command into argv once and runs it **without a shell**. Pipes/redirects/chaining (`|`, `>`, `;`, `&&`, …) are rejected with a clear error; globs (`*.py`), `$VARS`, `~`, `$(...)` are passed literally; `echo`/`pwd` are the PATH binaries. With no filter set, commands run through `sh -c` with full syntax.
 
-For inspection-only access (`cat`, `head`, `tail`, `ls`, `grep`, `find`, `git log`, `git diff`, `git status`, …):
+- `readonly=True` allows only `cat head tail ls grep egrep fgrep wc du df diff stat which pwd echo printenv cut` — **no `git`, `find`, `file`** (they can write/exec). Need `git log`? Pass your own `allowed=[...]` (it replaces the read-only set).
+- `blocked=["rm"]` matches the program by basename (`/bin/rm` caught) — but can't stop `sh -c`, `env`, `xargs`. Not a security boundary; use `allowed` or a container backend.
+
+## Isolated backends
 
 ```python
-from ag2.tools import LocalEnvironment, SandboxShellTool
+from ag2.extensions.docker import DockerEnvironment     # pip install "docker>=6.0.0,<8"  (needs a Docker daemon)
+from ag2.tools import SandboxCodeTool, SandboxShellTool
 
-sh = SandboxShellTool(LocalEnvironment(path="/my/codebase"), readonly=True)
+async with DockerEnvironment(image="python:3.12-slim", network_mode="none") as env:
+    agent = Agent("dev", config=config, tools=[SandboxShellTool(env), SandboxCodeTool(env)])
+    await agent.ask("Write hello.txt with the shell, then read it with Python.")
+# container removed here; shell and run_code shared one container (workdir /workspace)
 ```
 
-Pass an explicit `allowed=[...]` to override the built-in read-only allowlist.
+`DaytonaEnvironment` (`pip install "daytona>=0.171.0,<1"`, `DAYTONA_API_KEY`) and `TenkiEnvironment` (`pip install "tenki>=1.4.0,<2"`, `TENKI_API_KEY`; workdir `/home/tenki`; use `SandboxCodeTool(env.code_environment())` because its image has `python3`, not `python`) work the same way.
 
-### Parameter reference
-
-`LocalEnvironment` (the environment — where and how commands run):
-
-| Parameter | Default | Description |
-|---|---|---|
-| `path` | `None` | Working dir. `None` → temp dir (prefix `ag2_sandbox_`), deleted on exit |
-| `cleanup` | `None` | `None` → auto (`True` when `path=None`, `False` otherwise). Deletes `path` on close |
-| `timeout` | `60` | Per-command timeout in seconds (returns `"Command timed out after Ns"` with exit code 124) |
-| `max_output` | `100_000` | Max characters returned (truncated output is suffixed `[truncated: …]`) |
-| `env_vars` | `None` | Extra env vars merged into each command |
-
-`SandboxShellTool` (the tool — agent-facing command policy):
-
-| Parameter | Default | Description |
-|---|---|---|
-| `environment` | `None` | The backend. `None` → `LocalEnvironment()` (local subprocess, temp dir) |
-| `allowed` | `None` | Whitelist of command prefixes. `None` → all commands allowed |
-| `blocked` | `None` | Blacklist of command prefixes (best-effort, not a security boundary) |
-| `ignore` | `None` | Gitignore-style path patterns; matches block the command |
-| `readonly` | `False` | When `True` and `allowed` unset, restricts to a built-in read-only list |
-
-## Stateful multi-turn workspaces
-
-Files persist in `workdir` across `ask()` calls, so the agent can build on prior work:
+## `AnthropicBashTool` and `ShellTool`
 
 ```python
-from ag2.tools import LocalEnvironment, SandboxShellTool
+from ag2.config import AnthropicConfig, OpenAIResponsesConfig
+from ag2.tools import AnthropicBashTool, ContainerAutoEnvironment, NetworkPolicy, ShellTool
 
-sh = SandboxShellTool(LocalEnvironment(path="/tmp/counter_demo"))
-agent = Agent("coder", "You manage files.", config=config, tools=[sh])
+claude = Agent("ops", config=AnthropicConfig(model="claude-haiku-4-5"),
+               tools=[AnthropicBashTool(LocalEnvironment("/srv/project"))])  # same allowed/blocked/ignore/readonly kwargs
 
-reply1 = await agent.ask("Create counter.txt with value 0")
-reply2 = await reply1.ask("Increment the counter by 1")
-reply3 = await reply2.ask("Read the counter and tell me the value")
+hosted = Agent("ops", config=OpenAIResponsesConfig(model="gpt-5.2"),
+               tools=[ShellTool(environment=ContainerAutoEnvironment(
+                   network_policy=NetworkPolicy(allowed_domains=["pypi.org"])))])
 ```
 
-## Provider-native `ShellTool` (OpenAI Responses only)
-
-`ShellTool` is a provider-executed capability flag. **Only the OpenAI Responses API runs shell server-side.** Anthropic's `bash` tool is client-side and is rejected with `UnsupportedToolError` — use `SandboxShellTool` there. Gemini is also unsupported.
-
-```python
-from ag2.config import OpenAIResponsesConfig
-from ag2.tools import ShellTool
-
-agent = Agent("devops", config=OpenAIResponsesConfig(model="gpt-4.1"), tools=[ShellTool()])
-```
-
-OpenAI lets you configure the execution environment:
-
-```python
-from ag2.config import OpenAIResponsesConfig
-from ag2.tools import ContainerAutoEnvironment, NetworkPolicy, ShellTool
-
-agent = Agent(
-    "devops",
-    config=OpenAIResponsesConfig(model="gpt-4.1"),
-    tools=[
-        ShellTool(
-            environment=ContainerAutoEnvironment(
-                network_policy=NetworkPolicy(allowed_domains=["pypi.org"]),
-            ),
-        ),
-    ],
-)
-```
-
-Environment options (OpenAI-only):
-
-| Environment | Description |
-|---|---|
-| `ContainerAutoEnvironment` | Provider-managed container with optional `NetworkPolicy` |
-| `ContainerReferenceEnvironment` | Reference an existing container by ID |
-
-## `SandboxShellTool` vs `ShellTool`
-
-| | `SandboxShellTool` | `ShellTool` |
-|---|---|---|
-| **Execution** | Client-side `subprocess` | Provider-side container |
-| **Provider support** | Any provider | OpenAI Responses only |
-| **Environment control** | Full (`allowed`, `blocked`, `ignore`, `readonly`, …) | Limited (provider-dependent) |
-| **Local FS access** | Yes (you choose what's exposed) | No |
-| **Network control** | Via `blocked` / `allowed` patterns | OpenAI: `NetworkPolicy` |
-| **Import** | `from ag2.tools import SandboxShellTool, LocalEnvironment` | `from ag2.tools import ShellTool` |
-
-## Going deeper
-
-- `website/docs/user-guide/tools/local_shell.mdx` — full `SandboxShellTool` / `LocalEnvironment` reference, command-filtering semantics.
-- `website/docs/user-guide/tools/builtin_tools.mdx#shell` — provider-native `ShellTool` setup and environment configs.
-- For **human-approval gating before each shell call**, layer `approval_required()` middleware (see `ag2-hitl`).
+Parameter tables, filter order, backend matrix, custom backends (`SandboxFactory`, `WorkdirAware`): `references/shell_reference.md`.
 
 ## Common pitfalls
 
-- **Forgetting sandboxing in production** — `SandboxShellTool()` with no filters runs anything anywhere with a 60s timeout. Set `allowed`, `blocked`, or `readonly` for any non-trivial use.
-- **`ignore` only checks literal paths in the command string** — variable substitution, command substitution (`` `cat secrets.key` ``), and dynamic glob expansion are not inspected. Layer in `blocked=["cat", "less"]` if you also want to block readers.
-- **`blocked` is best-effort, not a security boundary** — it only matches the head command's prefix, so chaining (`echo x; rm -rf ~`) bypasses `blocked=["rm"]`. Use `allowed` / `readonly` or an isolated container backend for real isolation.
-- **Trying to use `ShellTool` on Anthropic or Gemini** — unsupported, will raise `UnsupportedToolError`. Use `SandboxShellTool` instead.
-- **Using a hardcoded path that another process is also touching** — multiple agents sharing `/tmp/my_project` will race. Use `tempfile.mkdtemp(prefix="...")` for parallel runs.
-- **Expecting `ShellTool` to access local files** — it doesn't; it runs in the provider's container. Use `SandboxShellTool` for anything on your filesystem.
-- **Trusting the LLM with shell access** — even sandboxed, write `prompt`s that scope what's allowed and consider pairing with `approval_required()` for destructive operations.
+- **`ShellTool()` without `environment=` raises `ClientExecutedShellUnsupportedError`** — pass `ContainerAutoEnvironment()` (or use `SandboxShellTool`). Hosted shell needs **gpt-5.2 or later**; older models return 400 "Tool 'shell' is not supported".
+- **Wrong provider raises `UnsupportedToolError`** — `ShellTool` is OpenAI-only; `AnthropicBashTool` is Anthropic-only. `SandboxShellTool` works everywhere.
+- **Restricted mode surprises the model** — it still writes `ls *.py | wc -l` and may conclude "0 files". `SandboxShellTool`'s auto-description says "runs without a shell"; `AnthropicBashTool`'s fixed definition cannot, so say it in the agent prompt ("commands run without a shell: no pipes, redirects or globs").
+- **No filters on `LocalEnvironment` = arbitrary commands on your machine** (60 s timeout). Set `allowed`/`readonly`, or use Docker/Daytona/Tenki for real isolation.
+- **`ignore` only checks literal path words** — a program that opens paths itself (`sh -c`, `find`) is not covered.
+- **Shared hard-coded dirs race** across parallel agents — use `tempfile.mkdtemp()`.
+- **Human approval before each command** — `SandboxShellTool(env, middleware=[approval_required()])` (`from ag2.middleware import approval_required`) plus an agent `hitl_hook`; see `ag2-hitl`.

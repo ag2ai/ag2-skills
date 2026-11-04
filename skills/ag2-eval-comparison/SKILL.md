@@ -16,7 +16,7 @@ For running and grading a single agent (scorers, CI, persistence), use `ag2-eval
 ## Install
 
 ```bash
-pip install "ag2[openai,tracing]"
+pip install "ag2[openai,gemini,anthropic,tracing]"   # the providers you compare/judge with, plus tracing
 ```
 
 > Required. Run this install before delivering the code. If you cannot run commands, state the exact `pip install` command.
@@ -27,7 +27,7 @@ pip install "ag2[openai,tracing]"
 
 ```python
 from ag2 import Agent
-from ag2.config import OpenAIConfig, GeminiConfig
+from ag2.config import AnthropicConfig, GeminiConfig, OpenAIResponsesConfig
 from ag2.eval import Variants, run_variants
 from ag2.eval.scorers import agent_judge
 
@@ -35,19 +35,19 @@ board = await run_variants(
     suite,
     variants=Variants(
         {
-            "gpt-4o": Agent("a", prompt="Answer helpfully.", config=OpenAIConfig("gpt-4o")),
-            "flash":  Agent("a", prompt="Answer helpfully.", config=GeminiConfig("gemini-3-flash-preview")),
+            "gpt-4.1-mini": Agent("a", prompt="Answer helpfully.", config=OpenAIResponsesConfig("gpt-4.1-mini")),
+            "flash":        Agent("a", prompt="Answer helpfully.", config=GeminiConfig("gemini-3.6-flash")),
         },
         axis="config",                  # label for what was varied (used in summary)
     ),
-    scorers=[agent_judge(OpenAIConfig("gpt-4o"), criterion="Helpful and accurate.", key="quality")],
+    scorers=[agent_judge(AnthropicConfig(model="claude-haiku-4-5"), criterion="Helpful and accurate.", key="quality")],
     store_dir="runs",
     repeats=5,                          # optional: N runs per variant for stability
 )
 print(board.summary("quality"))         # ranked leaderboard
 board.best("quality")                   # winning variant name (None if tied)
 board.leaderboard("quality")            # list[LeaderboardRow] — variant, score, n, rank
-board.results["gpt-4o"]                 # each variant's full RunResult
+board.results["gpt-4.1-mini"]                 # each variant's full RunResult
 ```
 
 Vary whatever you like across the agents — set `axis` to label it (e.g. `"config"`, `"prompt"`, `"tools"`). Tied scores share a rank; a 3-way tie usually means the eval isn't discriminating — make it harder, or score quality with a judge.
@@ -62,7 +62,7 @@ from ag2.eval.scorers import pairwise_judge
 
 result = await run_pairwise(
     suite, variant_a=agent_v1, variant_b=agent_v2,
-    comparators=[pairwise_judge(OpenAIConfig("gpt-4o"), criterion="more helpful answer", key="quality")],
+    comparators=[pairwise_judge(AnthropicConfig(model="claude-haiku-4-5"), criterion="more helpful answer", key="quality")],
     store_dir="runs",
 )
 wr = result.win_rate("quality")         # B's win-rate
@@ -100,6 +100,8 @@ result = await evaluate_pairwise(a, b, suite=suite, store_dir="runs",
 ```
 
 The manifest hides which model is which; its `first_variant` field de-blinds it for `human_labels`.
+
+`DirectoryTraceSource` reads one `<trace_id>.json` of spans per trace — **not** the run JSONs `store_dir=` writes. Capture them with `TelemetryMiddleware` + an OTel `InMemorySpanExporter`, then `save_trace(dir, trace_id, [readable_span_to_data(s) for s in exporter.get_finished_spans()], task_id=...)` (`save_trace` from `ag2.eval.sources.trace_source`, `readable_span_to_data` from `ag2.eval.sources`); see `ag2-evaluation` → `references/results-and-traces.md`.
 
 ## Common pitfalls
 

@@ -1,6 +1,6 @@
 ---
 name: ag2-observers-and-alerts
-description: Monitor an AG2 agent's stream — log events, detect repeated tool calls, track token spend, build trigger-driven observers, route observer alerts to the model, and halt on FATAL conditions. Covers `@observer(...)` (stateless), `BaseObserver` (stateful), built-ins (`TokenMonitor`, `LoopDetector`), `Watch` primitives (`EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`), `ObserverAlert` (`Severity.INFO/WARNING/CRITICAL/FATAL`), `AlertPolicy`, and `HaltEvent`. Use when the user wants observability, runtime safety guards, alerts, or batch/time-based reactive logic.
+description: "Monitor an AG2 agent's stream — log events, detect repeated tool calls, track token spend (including sub-agents), build trigger-driven observers, route alerts to the model, and halt on FATAL alerts. Covers `@observer(...)` (stateless), `BaseObserver` (stateful, `process()`, `timeout=`), built-ins `TokenMonitor` and `LoopDetector`, `Watch` primitives (`EventWatch`, `CadenceWatch`, `DelayWatch`, `IntervalWatch`, `CronWatch`, `AllOf`, `AnyOf`, `Sequence`), `ObserverAlert` + `Severity` (INFO/WARNING/CRITICAL/FATAL), `AlertPolicy` wired via `Middleware(AssemblerMiddleware, policies=[...])` + `Middleware(HaltCheckMiddleware)`, `HaltEvent`, and escalating CRITICAL to a halt. Use for observability, runtime safety guards, budget alerts, batch/time-based reactive logic. Sub-agent event trees (`ChildEvent`): `ag2-subagent-delegation`; traces: `ag2-telemetry`; blocking a tool before it runs: `ag2-hitl` / `ag2-middleware`."
 license: Apache-2.0
 ---
 
@@ -9,212 +9,136 @@ license: Apache-2.0
 ## When to use
 
 - **Observability** — log model responses, tool calls, token usage.
-- **Runtime safety** — block dangerous tool arguments, halt the agent.
-- **Reactive metrics** — fire on every Nth response, or every M seconds.
-- **Loop / repetition detection** — catch infinite tool-call loops.
-- **Stateful monitoring** — anything that needs to remember prior events to decide what to do next.
+- **Runtime safety** — detect dangerous tool arguments and halt the agent's next model call.
+- **Budgets / loops** — token thresholds, repeated identical tool calls.
+- **Reactive metrics** — every Nth event, every T seconds, cron.
 
 ## Two observer shapes
 
-| Shape | When | Use |
+| Shape | When | API |
 |---|---|---|
-| Stateless function | One-off event hook (logging, metrics) | `@observer(EventType)` |
-| Stateful class | Counters / windows / thresholds / composed triggers | Subclass `BaseObserver` |
-
-Both are stream subscribers under the hood — registered on the agent rather than directly on the stream.
-
-## 60-second recipe — `@observer`
+| Stateless function | per-event hook (logging, metrics) | `@observer(EventType)` |
+| Stateful class | counters, windows, thresholds, composed triggers | subclass `BaseObserver` |
 
 ```python
 from ag2 import Agent, observer
-from ag2.config import OpenAIConfig
+from ag2.config import OpenAIResponsesConfig
 from ag2.events import ModelResponse
 
 @observer(ModelResponse)
 async def log_response(event: ModelResponse) -> None:
-    print(f"Model said: {event.content}")
+    print("Model said:", event.content)
 
-agent = Agent(
-    "assistant",
-    config=OpenAIConfig(model="gpt-4o-mini"),
-    observers=[log_response],
-)
+agent = Agent("assistant", config=OpenAIResponsesConfig(model="gpt-4.1-mini"), observers=[log_response])
 ```
 
-Or attach after construction with `@agent.observer(...)`. Per-call observers also supported (`agent.ask("...", observers=[...])`).
-
-Observer callbacks support full dependency injection (`Context`, `Inject`, `Variable`, `Depends`). Filter by event type, multiple types (`ModelRequest | ModelResponse`), or field value (`ToolCallEvent.name == "search"`). Use `interrupt=True` to modify or suppress events before regular subscribers see them.
+Also `@agent.observer(...)` and per-call `agent.ask(..., observers=[...])`. Conditions: a type, `A | B`, a tuple `(A, B)`, field filters (`ToolCallEvent.name == "search"`), negation `~A`. Callbacks support DI (`Context`, `Variable`, `Inject`, `Depends`); options `interrupt=True`, `sync_to_thread=False`, `timeout=5.0`. A root agent's observers also receive descendants' events (as `ChildEvent`, or `UsageEvent` / task lifecycle as themselves) — see `ag2-subagent-delegation`.
 
 ## Built-in stateful observers
 
 ```python
-from ag2 import Agent
 from ag2.observers import LoopDetector, TokenMonitor
 
-agent = Agent(
-    "assistant",
-    config=config,
-    observers=[
-        TokenMonitor(warn_threshold=50_000, alert_threshold=100_000),
-        LoopDetector(window_size=10, repeat_threshold=3),
-    ],
-)
+monitor = TokenMonitor(warn_threshold=50_000, alert_threshold=100_000)
+agent = Agent("assistant", config=config, observers=[monitor, LoopDetector(window_size=10, repeat_threshold=3)])
+...
+print(monitor.total_tokens)   # cumulative across turns until monitor.reset()
 ```
 
-- **`TokenMonitor`** — tracks cumulative tokens across `ModelResponse` and `TaskCompleted`. Emits `WARNING` / `CRITICAL` `ObserverAlert`s as thresholds are crossed. Read state via `monitor.total_tokens`.
-- **`LoopDetector`** — sliding window of recent tool calls. Emits a `WARNING` alert when `repeat_threshold` consecutive identical calls are seen.
+- **`TokenMonitor`** — sums `UsageEvent`s (model calls, sub-agents, compaction). One `WARNING` at `warn_threshold`, one **`CRITICAL`** at `alert_threshold` (if both are crossed at once only CRITICAL is emitted).
+- **`LoopDetector`** — `WARNING` when `repeat_threshold` consecutive identical calls (name + arguments) occur, tracked per worker.
 
 ## Custom `BaseObserver`
 
-A `BaseObserver` pairs a `Watch` (when to fire) with a `process()` method (what to do):
-
 ```python
 from ag2 import Context
+from ag2.events import BaseEvent, ModelResponse, ObserverAlert, Severity
 from ag2.observers import BaseObserver
 from ag2.watch import CadenceWatch
-from ag2.events import BaseEvent, ModelResponse
-from ag2.events.alert import ObserverAlert, Severity
 
-class AvgCompletionObserver(BaseObserver):
-    """Every N responses, emit an INFO alert with avg completion-token count."""
-
+class AvgCompletion(BaseObserver):
     def __init__(self, window: int = 5) -> None:
-        super().__init__("avg-completion", watch=CadenceWatch(n=window, condition=ModelResponse))
-        self._window = window
+        super().__init__("avg-completion", watch=CadenceWatch(n=window, condition=ModelResponse), timeout=5.0)
 
     async def process(self, events: list[BaseEvent], ctx: Context) -> ObserverAlert | None:
         tokens = [e.usage.completion_tokens for e in events if isinstance(e, ModelResponse) and e.usage]
         if not tokens:
             return None
-        return ObserverAlert(
-            source=self.name,
-            severity=Severity.INFO,
-            message=f"Avg completion tokens over last {self._window}: {sum(tokens) / len(tokens):.0f}",
-        )
+        return ObserverAlert(source=self.name, severity=Severity.INFO, message=f"avg completion {sum(tokens) / len(tokens):.0f}")
 ```
 
-If `process()` returns an `ObserverAlert`, the base class emits it onto the stream. You can also send events manually via `await ctx.send(...)`.
+A returned `ObserverAlert` is published on the stream; `await ctx.send(...)` emits anything else. Errors/timeouts in `process()` are logged, not raised.
 
-## Watch primitives — picking *when* to fire
+## Watches — *when* to fire (`ag2.watch`)
 
-| You need | Use |
+| Need | Watch |
 |---|---|
-| Every matching event | `EventWatch(EventType)` or just `stream.subscribe(fn, condition=...)` |
-| Every N matching events | `CadenceWatch(n=N, condition=EventType)` |
-| Every T seconds (buffered events) | `CadenceWatch(max_wait=T, condition=EventType)` |
-| Either threshold | `CadenceWatch(n=N, max_wait=T, condition=EventType)` |
-| Once after delay | `DelayWatch(seconds)` |
-| Periodic timer | `IntervalWatch(seconds)` |
-| Cron schedule | `CronWatch("0 9 * * MON")` |
-| All sub-watches must fire | `AllOf(w1, w2)` |
-| Any sub-watch fires | `AnyOf(w1, w2)` |
-| In order | `Sequence(w1, w2)` |
+| every matching event | `EventWatch(EventType)` |
+| every N / every T seconds / either | `CadenceWatch(n=N, max_wait=T, condition=EventType)` (needs `n` or `max_wait`) |
+| once after delay / periodic / cron | `DelayWatch(s)` / `IntervalWatch(s)` / `CronWatch("0 9 * * MON")` |
+| composition | `AllOf(...)`, `AnyOf(...)`, `Sequence(...)` |
 
-All importable from `ag2.watch`. Callback signature is uniform: `async def cb(events: list[BaseEvent], ctx: Context) -> None`. Time-driven watches pass `events=[]`.
+Time-driven watches call `process()` with `events=[]`.
 
-## `ObserverAlert` — the alert type
+## Alerts → model, and what halts
+
+`ObserverAlert` is on the stream but **not shown to the model** by default. Route alerts through `AlertPolicy` with the middleware form (the old `Agent(assembly=[AlertPolicy()])` is deprecated, removed in 1.4.0):
 
 ```python
-from ag2.events.alert import ObserverAlert, Severity
-
-ObserverAlert(
-    source="my-observer",
-    severity=Severity.WARNING,    # INFO, WARNING, CRITICAL, FATAL
-    message="What happened",
-)
-```
-
-**Important:** `ObserverAlert` is on the stream and persisted in history, but the default provider mappers **do not render it back to the LLM**. To make the agent see alerts, add `AlertPolicy()` to `assembly=[...]`:
-
-```python
+from ag2.assembly import AssemblerMiddleware
+from ag2.middleware import HaltCheckMiddleware, Middleware
 from ag2.policies import AlertPolicy
-agent = Agent("assistant", config=config, assembly=[AlertPolicy()])
-```
-
-## FATAL alerts → `HaltEvent` → short-circuit
-
-`AlertPolicy` does two things on `Severity.FATAL`:
-
-1. Emits a `HaltEvent` on the stream.
-2. Appends a halt notice to the system prompt.
-
-When `assembly=[...]` is non-empty, the harness automatically wires `_HaltCheckMiddleware` which sees the `HaltEvent` and short-circuits the next LLM call with a synthetic `HALTED: ...` response.
-
-```python
-from ag2 import Context
-from ag2.observers import BaseObserver
-from ag2.events import BaseEvent, ToolCallEvent
-from ag2.events.alert import HaltEvent, ObserverAlert, Severity
-from ag2.policies import AlertPolicy
-from ag2.watch import EventWatch
-
-class PathGuardian(BaseObserver):
-    def __init__(self) -> None:
-        super().__init__("path-guardian", watch=EventWatch(ToolCallEvent))
-
-    async def process(self, events: list[BaseEvent], ctx: Context) -> ObserverAlert | None:
-        for event in events:
-            if not isinstance(event, ToolCallEvent) or event.name != "write_file":
-                continue
-            if "/etc/" in event.arguments or "/usr/" in event.arguments:
-                return ObserverAlert(
-                    source=self.name,
-                    severity=Severity.FATAL,
-                    message=f"blocked dangerous write: {event.arguments}",
-                )
-        return None
 
 agent = Agent(
-    "safe-shell",
-    prompt="...",
-    config=config,
-    tools=[write_file],
-    observers=[PathGuardian()],
-    assembly=[AlertPolicy()],   # routes FATAL → HaltEvent
+    "guarded", config=config, observers=[...],
+    middleware=[
+        Middleware(AssemblerMiddleware, policies=[AlertPolicy()]),  # alerts -> prompt; FATAL -> HaltEvent
+        Middleware(HaltCheckMiddleware),                           # HaltEvent -> stop model calls
+    ],
 )
 ```
 
-The first dangerous tool call triggers FATAL → halt; the agent's next ask is short-circuited. Full runnable demo: `assets/safety_guard.py`.
+| Severity | Effect with the wiring above |
+|---|---|
+| `INFO`, `WARNING`, `CRITICAL` | added to the system prompt once (dedup on source+severity+message). **No halt.** |
+| `FATAL` | `HaltEvent` emitted; the next model call in **this turn** returns `HALTED: FATAL: <message>` instead of calling the provider |
 
-## Subscribing to alerts and halts from outside
+Halting is turn-scoped and only stops *model calls*: a tool call already dispatched still runs, and the next `ask()` starts fresh. To block a tool before it runs, use tool middleware / `approval_required()` (`ag2-hitl`).
+
+### Make CRITICAL (e.g. `TokenMonitor`) halt
+
+Escalate it to FATAL with an observer — `AlertPolicy` then halts:
 
 ```python
-from ag2 import MemoryStream
-from ag2.events.alert import HaltEvent, ObserverAlert
+from ag2 import Context, observer
+from ag2.events import ObserverAlert, Severity
 
-stream = MemoryStream()
-stream.where(ObserverAlert).subscribe(lambda e: print(f"[{e.severity}] {e.source}: {e.message}"))
-stream.where(HaltEvent).subscribe(lambda e: print(f"HALT: {e.reason}"))
-await agent.ask("...", stream=stream)
+@observer(ObserverAlert)
+async def escalate(event: ObserverAlert, context: Context) -> None:
+    if event.severity == Severity.CRITICAL:
+        await context.send(ObserverAlert(source="escalator", severity=Severity.FATAL, message=event.message))
+
+agent = Agent(
+    "writer", config=config,
+    observers=[TokenMonitor(warn_threshold=30, alert_threshold=50), escalate],
+    middleware=[Middleware(AssemblerMiddleware, policies=[AlertPolicy()]), Middleware(HaltCheckMiddleware)],
+)
 ```
 
-## Observers vs Middleware vs Stream subscribers
-
-| Feature | Observer | Middleware | Stream subscriber |
-|---|---|---|---|
-| Registered on | Agent | Agent | Stream |
-| Lifecycle | Scoped to execution | Scoped to execution | Manual |
-| Boilerplate | Function (or `BaseObserver`) | `BaseMiddleware` class | Function |
-| Can modify events | `interrupt=True` | Yes (wraps execution) | `interrupt=True` |
-| DI support | Yes | Yes | Yes |
-| Use case | Monitoring, metrics, alerts | Cross-cutting (retry, auth, rate limit) | Low-level event wiring |
+Usage is only known after a model call, so a single-call turn finishes before any halt can apply; the halt stops the next call (e.g. after a tool round).
 
 ## Going deeper
 
-- `assets/token_watchdog.py` — three observers (`TokenMonitor`, `LoopDetector`, custom `AlertConsole`) on one agent. Mirrors `code_examples/04`.
-- `assets/safety_guard.py` — `PathGuardian` → FATAL → `AlertPolicy` → `HaltEvent` → short-circuit. Mirrors `code_examples/08`.
-- Source docs:
-  - `website/docs/user-guide/advanced/observers.mdx` — `@observer`, `BaseObserver`, registration, built-ins, `ObserverAlert`.
-  - `website/docs/user-guide/advanced/watches.mdx` — every Watch primitive, composition rules.
-  - `website/docs/user-guide/advanced/stream.mdx` — Stream API, `where`, `subscribe`, interrupters, `RedisStream`.
-  - `website/docs/user-guide/advanced/assembly.mdx` — `AlertPolicy` ordering and dedup.
+- `assets/token_watchdog.py` — Anthropic: `TokenMonitor` + `LoopDetector` + alert console + CRITICAL→FATAL escalation.
+- `assets/safety_guard.py` — OpenAI: `PathGuardian` FATAL → `AlertPolicy` → `HaltEvent` → `HALTED:` reply.
+- Upstream: `website/docs/user-guide/advanced/observers.mdx`, `watches.mdx`, `stream.mdx`, `assembly.mdx`.
 
 ## Common pitfalls
 
-- **Alerts not reaching the model** — `ObserverAlert` events are on the stream but invisible to the LLM by default. Add `AlertPolicy()` to `assembly=[...]`.
-- **FATAL not halting** — `AlertPolicy` is what creates `HaltEvent`. Without `assembly=[..., AlertPolicy(), ...]` (or any non-empty assembly chain enabling `_HaltCheckMiddleware`), nothing halts.
-- **Sharing one `AlertPolicy()` across agents** — dedup state lives on the instance. Give each agent its own.
-- **Watch callback assumes `events` is non-empty** — for time-driven watches (`DelayWatch`, `IntervalWatch`, `CronWatch`), `events` is always `[]`.
-- **Forgetting `process()` is async** — `BaseObserver.process` must be `async def`.
-- **Subscribing with `subscribe(fn)` when you wanted `subscribe()` decorator** — both work; the bare-call form is `stream.subscribe(fn)`, the decorator form is `@stream.subscribe()` (with parens).
-- **`CadenceWatch` with no `n` and no `max_wait`** — raises `ValueError`; at least one is required.
+- **Expecting CRITICAL to halt** — only FATAL does; escalate as above.
+- **No `HaltCheckMiddleware`** — `AlertPolicy` emits `HaltEvent` but nothing stops the model call.
+- **`HaltCheckMiddleware` before `AssemblerMiddleware`** — put it right *after*, or the halt lands one call late.
+- **Expecting an observer to block a tool** — observers react after the event; gate tools with tool middleware.
+- **Sharing one `AlertPolicy()` / `TokenMonitor` across agents** — state lives on the instance.
+- **Assuming `events` is non-empty** in time-driven watches.
+- **`BaseObserver.process` not `async def`.**

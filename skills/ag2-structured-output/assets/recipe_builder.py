@@ -46,7 +46,7 @@ def scale_ingredient(quantity: float, factor: float) -> float:
 
 
 async def main() -> None:
-    config = GeminiConfig(model="gemini-3-flash-preview", temperature=0)
+    config = GeminiConfig(model="gemini-3.6-flash", temperature=0)
 
     section("Recipe builder — scale an existing dish for 6 servings")
 
