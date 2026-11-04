@@ -17,7 +17,8 @@ from ag2 import Agent
 from ag2.config import GeminiConfig
 
 # Load API keys from a .env file at the project root (GEMINI_API_KEY here).
-# Swap GeminiConfig for OpenAIConfig / AnthropicConfig if that's the key you have.
+# Swap GeminiConfig for OpenAIResponsesConfig / AnthropicConfig if that's the key you have
+# (drop temperature= for AnthropicConfig — deprecated there).
 load_dotenv()
 
 
@@ -35,7 +36,7 @@ TURNS = [
 
 
 async def main() -> None:
-    config = GeminiConfig(model="gemini-3-flash-preview", temperature=0)
+    config = GeminiConfig(model="gemini-3.6-flash", temperature=0)
 
     agent = Agent(
         "travel-planner",

@@ -1,208 +1,116 @@
 ---
 name: ag2-acp
-description: "Drive external CLI coding agents (Claude Code, Codex, OpenCode) as first-class AG2 Agents over the Agent Client Protocol (ACP): point an Agent at a ClaudeCodeConfig / CodexConfig / OpenCodeConfig preset from ag2.acp and ask()/run() it like any agent, with its thinking, tool calls, plans and permission prompts externalized onto AG2's event stream. Use when orchestrating, observing, or gating CLI coding agents from Python — permission_policy ask/auto/deny HITL gating, fs_root confinement, turn timeouts, in-process testing via fake_acp_config. To expose an AG2 agent to other systems instead, see ag2-a2a or ag2-mcp; for approval plumbing see ag2-hitl."
+description: "Agent Client Protocol (ACP) in both directions. CLIENT: drive CLI coding agents (Claude Code, Codex, OpenCode, Kilo Code) as AG2 Agents via `ClaudeCodeConfig`/`CodexConfig`/`OpenCodeConfig`/`KiloCodeConfig`/`ACPConfig`, or a remote agent via `ACPRemoteConfig(url=, headers=)`; stream thinking/tool calls/plans (`ACPPlan`, `ACPElicitation`), gate with `permission_policy` and `elicitation_policy`, expose AG2 tools to the CLI agent over MCP (`expose_tools`), `model=` selection, trimmed `env`, `turn_timeout`, `async with config`. SERVER: `ACPAgent(agent).run_stdio()` serves an AG2 agent to ACP clients/editors (Zed, JetBrains, VS Code, Neovim) with `SessionConfig`, `StaticTokenAuth`/`AuthProvider`, `PromptContent`, `hitl_hook`, `session/load`. Testing: `ag2.acp.testing.fake_acp_config`/`fake_remote_acp_config`/`connect`. For serving over MCP see `ag2-mcp`; A2A `ag2-a2a`; web UIs `ag2-ag-ui`; approvals `ag2-hitl`."
 license: Apache-2.0
 ---
 
-# CLI coding agents over ACP
+# ACP: drive CLI coding agents, or serve your agent to editors
 
-Drive external CLI coding agents — **Claude Code**, **Codex**, **OpenCode** — as first-class AG2 `Agent`s, using the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). AG2 plays the ACP **Client** role; each CLI agent runs as an ACP **Agent** subprocess. Everything the agent does — message output, thinking, tool calls, plans, permission prompts — is externalized onto AG2's event stream, so you can observe, gate, and orchestrate it like any other AG2 agent.
-
-The integration is just a config class (`ACPConfig` and its presets) — no changes to the `Agent` API.
-
-## When to use
-
-- You want to **orchestrate CLI coding agents from Python**: headless refactoring pipelines, "manager" agents delegating to coder agents, batch code-mod runs.
-- You want to **observe** a coding agent's work live — thoughts, tool calls, plans — on the AG2 event stream.
-- You want to **gate** the agent's sensitive actions (file writes, shell commands) with a permission policy or a human in the loop.
-- You need the agent's file access **confined** to a workspace root (`fs_root`) and its terminal use mediated by AG2.
-
-Not this skill: exposing an AG2 agent *to* other systems — that is `ag2-a2a` (A2A protocol) or `ag2-mcp` (MCP server). For the HITL input plumbing that `permission_policy="ask"` relies on, see `ag2-hitl`.
-
-## Installation
+| Direction | AG2 role | API |
+|---|---|---|
+| Orchestrate Claude Code / Codex / OpenCode / Kilo Code from Python | ACP **Client** | `Agent(config=ClaudeCodeConfig(...))` etc., `ACPRemoteConfig` |
+| Make your AG2 agent usable from Zed / JetBrains / VS Code / any ACP client | ACP **Agent** | `ACPAgent(agent).run_stdio()` |
 
 ```bash
-pip install "ag2[acp]"
+pip install "ag2[acp]"                                   # agent-client-protocol 0.12 (+ mcp)
+pip install "agent-client-protocol[http]"                # only for ACPRemoteConfig (HTTP / WebSocket)
 ```
 
-The `acp` extra pulls in the `agent-client-protocol` SDK. Each CLI agent additionally needs its own ACP adapter on `PATH`:
+## Client: drive a CLI coding agent
 
-| Agent | Adapter install | Auth |
+```python
+import os
+from ag2 import Agent
+from ag2.acp import ClaudeCodeConfig
+
+def get_ticket(ticket_id: str) -> dict:
+    """Fetch a ticket from the internal tracker."""
+    return {"id": ticket_id, "status": "open"}
+
+async with ClaudeCodeConfig(
+    cwd="/path/to/repo",
+    env={"ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"]},  # shell exports are NOT inherited
+    permission_policy="auto",          # "ask" (default, -> hitl_hook) | "auto" | "deny"
+    elicitation_policy="decline",      # "ask" (default) | "decline" — for headless runs
+    turn_timeout=600,
+) as config:                            # closes subprocess + tool gateway on exit
+    agent = Agent("coder", config=config, tools=[get_ticket])   # tools are served to the CLI agent over MCP
+    reply = await agent.ask("Look up ticket ACME-4211, then add a healthcheck endpoint with tests.")
+    print(reply.body)
+    follow_up = await reply.ask("Now run the tests.")             # same ACP session
+```
+
+| Preset | Launches | Auth (pass keys in `env=`, or rely on a login under `$HOME`) |
 |---|---|---|
-| Claude Code | `npm i -g @agentclientprotocol/claude-agent-acp` (bin `claude-agent-acp`) | `ANTHROPIC_API_KEY` in `env`, or `CLAUDE_CONFIG_DIR` pointing at an existing Claude Code login |
-| Codex | `npm i -g @agentclientprotocol/codex-acp` (bin `codex-acp`) | `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY` |
-| OpenCode | `opencode` CLI itself (`opencode acp`) | `opencode auth login` (or env / `.env`) |
+| `ClaudeCodeConfig` | `claude-agent-acp` (`npm i -g @agentclientprotocol/claude-agent-acp`) | `ANTHROPIC_API_KEY`, or `~/.claude` login / `CLAUDE_CONFIG_DIR` |
+| `CodexConfig` | `codex-acp` (`npm i -g @agentclientprotocol/codex-acp`) | `CODEX_API_KEY` / `OPENAI_API_KEY`, or `codex login` |
+| `OpenCodeConfig` | `opencode acp` | `opencode auth login` |
+| `KiloCodeConfig` | `kilo acp` (`npm i -g @kilocode/cli`) | `kilo auth login`; **always set `model=`** |
+| `ACPConfig(command=[...])` | anything speaking ACP on stdio (including an AG2 `ACPAgent`) | `env=` |
 
-No global install? Override the launch command to use npx: `ClaudeCodeConfig(command=["npx", "-y", "@agentclientprotocol/claude-agent-acp"])`.
+- **Env is trimmed** to `HOME, LOGNAME, PATH, SHELL, TERM, USER` + `env=`. Billing follows the credential (API key vs subscription login).
+- `model=` is applied via `session/set_config_option` (Claude Code/Codex: bare ids; OpenCode/Kilo: `"provider/model"`); an unknown id → `ValueError` before the first turn.
+- `tools=[...]` are now **exposed** to the CLI agent through an in-process loopback MCP gateway (`expose_tools=True` default). Provider builtins (`WebSearchTool`, …) → `UnsupportedToolError`; set `expose_tools=False` for the old behaviour. Agent must support HTTP MCP, else `MCPCapabilityError`.
+- `permission_policy="ask"` / `elicitation_policy="ask"` with no `hitl_hook` → requests are denied/cancelled; use `"auto"`/`"decline"` for unattended runs.
+- Images/documents: `agent.ask("What's wrong here?", ImageInput(path="shot.png"))` — sent if the agent advertises the capability, else a `[image]` placeholder.
+- Always `async with config` or `await config.aclose()` — sessions outlive `agent.run()` and are never reclaimed implicitly.
 
-Public API (`from ag2.acp import ...`): `ACPConfig`, `ClaudeCodeConfig`, `CodexConfig`, `OpenCodeConfig`.
-
-## 60-second recipe — ask a coding agent to do work
-
-```python
-import asyncio
-
-from ag2 import Agent
-from ag2.acp import ClaudeCodeConfig
-
-async def main():
-    config = ClaudeCodeConfig(cwd="/path/to/repo")  # workspace root
-    agent = Agent("coder", config=config)
-    try:
-        reply = await agent.ask("Refactor the auth module and add tests")
-        print(reply.body)
-    finally:
-        await config.aclose()  # tear down the CLI subprocess
-
-asyncio.run(main())
-```
-
-One `ask()` / `run()` = one ACP **prompt turn**: the CLI agent runs its own internal tool loop (possibly many tool calls) and AG2 streams every step as it happens.
-
-## Choosing an adapter
-
-- `ClaudeCodeConfig()` — launches `claude-agent-acp`. Select the model via the adapter's `ANTHROPIC_MODEL` env var.
-- `CodexConfig()` — launches `codex-acp`. Model via the adapter's `MODEL_PROVIDER` env var.
-- `OpenCodeConfig()` — launches `opencode acp`. Model in OpenCode's own config (`opencode.json`: `"model": "provider/model"`).
-
-> The presets' `model` field is **response metadata only** — it is not sent to the agent. Pick the model through each adapter's own mechanism (env var / config file) as above.
-
-## Observing the agent's work
-
-Subscribe to the run's stream **before** awaiting the result:
+Observe live work by subscribing before awaiting:
 
 ```python
-from ag2 import Agent
-from ag2.acp import ClaudeCodeConfig
-from ag2.acp.events import ACPPlan
+from ag2.acp.events import ACPElicitation, ACPPlan
 from ag2.events import ModelMessageChunk, ModelReasoning
 from ag2.events.tool_events import BuiltinToolCallEvent
 
-agent = Agent("coder", config=ClaudeCodeConfig(cwd="/path/to/repo"))
-
-def observe(event):
-    if isinstance(event, ModelReasoning):
-        print("thinking:", event.content)
-    elif isinstance(event, ModelMessageChunk):
-        print(event.content, end="")
-    elif isinstance(event, BuiltinToolCallEvent):
-        print(f"tool: {event.name}({event.arguments})")  # arguments = JSON string of the tool input
-    elif isinstance(event, ACPPlan):
-        for step in event.entries:
-            print(f"  [{step.status}] {step.content}")
-
 async with agent.run("Add a healthcheck endpoint") as run:
-    run.stream.subscribe(observe)
+    run.stream.subscribe(lambda e: print(type(e).__name__))
     reply = await run.result()
 ```
 
-How ACP session updates map onto AG2 events:
+ACP update → AG2 event: message → `ModelMessageChunk`/`ModelResponse`; thinking → `ModelReasoning`; tool call/result → `BuiltinToolCallEvent`/`BuiltinToolResultEvent` (`.name`, `.arguments` JSON string); plan → `ACPPlan` (`.entries[].content/.status`); `ACPModeChange`, `ACPAvailableCommands`, `ACPElicitation`.
 
-| ACP update | AG2 event |
-|---|---|
-| agent message chunk | `ModelMessageChunk` → final `ModelResponse` |
-| thinking chunk | `ModelReasoning` |
-| tool call / tool result | `BuiltinToolCallEvent` / `BuiltinToolResultEvent` |
-| plan | `ACPPlan` (entries with `.content` / `.status` / `.priority`) |
-| mode change | `ACPModeChange` (`.mode_id`) |
-| available commands | `ACPAvailableCommands` (`.commands`) |
-
-The ACP-specific events live in `ag2.acp.events`; the rest are the standard events from `ag2.events`.
-
-## Permissions (human-in-the-loop)
-
-When the agent wants to perform a sensitive action (write a file, run a command), it sends a permission request. `permission_policy` decides the answer:
-
-| Policy | Behavior |
-|---|---|
-| `"ask"` (default) | Route to the agent's `hitl_hook` / `context.input` — a human decides |
-| `"auto"` | Approve automatically (headless orchestration) |
-| `"deny"` | Reject automatically |
+### Remote agent (HTTP / WebSocket)
 
 ```python
-agent = Agent(
-    "coder",
-    config=ClaudeCodeConfig(cwd="/repo", permission_policy="auto"),  # fully autonomous
-)
+from ag2.acp import ACPRemoteConfig
+config = ACPRemoteConfig(url="https://dev-box.internal/acp",            # ws:// / wss:// -> WebSocket
+                         headers={"Authorization": f"Bearer {os.environ['ACP_TOKEN']}"},
+                         cwd="/path/to/repo", expose_tools=False)
 ```
 
-> **Pitfall:** `"ask"` with no input route available (no `hitl_hook`, no interactive context) **denies** the request — a headless run with the default policy will quietly reject every sensitive action. For unattended runs set `permission_policy="auto"` explicitly.
+No `command`/`env` (passing them → `TypeError`). Files/terminal stay on **your** side (mediated by `fs_root`). Exposing tools to a remote agent needs `gateway_address="10.0.0.5:8931"` (plain HTTP on that interface — keep it private). No reconnect.
 
-## Configuration reference
+## Server: serve an AG2 agent over ACP
 
-`ACPConfig` (and every preset) accepts:
-
-| Field | Default | Purpose |
-|---|---|---|
-| `command` | preset per agent | Executable + args launching the agent in ACP mode |
-| `cwd` | `"."` | Workspace root for the session |
-| `env` | `None` | Extra env vars, merged over a **trimmed** base env (`HOME`, `PATH`, `USER`, `SHELL`, `TERM`, `LOGNAME` — not the full parent env); pass API keys here explicitly |
-| `model` | `None` | Response metadata only — see "Choosing an adapter" |
-| `permission_policy` | `"ask"` | `"ask"` / `"auto"` / `"deny"` |
-| `fs_root` | `cwd` | Root for mediated `fs/*` access (path-confined) |
-| `allow_terminal` | `True` | Advertise the ACP terminal capability |
-| `additional_directories` | `[]` | Extra workspace roots |
-| `startup_timeout` | `30.0` | Subprocess spawn + handshake timeout (s) |
-| `turn_timeout` | `None` | Per-prompt-turn timeout (s); on expiry the turn is cancelled and the reply body is whatever streamed so far |
-| `cancel_timeout` | `5.0` | Grace period (s) after a timed-out turn signals `session/cancel` before the subprocess is hard-stopped |
-
-File and terminal operations the agent requests are mediated by AG2: file access is confined to `fs_root`, and commands run under AG2's control. `config.copy(**overrides)` clones a config (sessions are not carried over).
-
-## Lifecycle
-
-The ACP subprocess is spawned on the first turn and **reused** across turns of the same run. Call `await config.aclose()` to tear down all live subprocesses started from a config (a finalizer terminates them as a safety net if you forget).
-
-## Testing — in-process, no subprocess, no API keys
-
-`ag2.acp.testing.fake_acp_config` wires an `ACPConfig` to a scripted in-process agent: each `ACPTurn` describes one prompt turn (the `session/update`s it emits and the stop reason). Your code exercises the full public `Agent.run` path.
-
-```python
+```python title="serve_stdio.py"
 import asyncio
-
-from acp import schema
-
 from ag2 import Agent
-from ag2.acp.testing import ACPTurn, fake_acp_config
+from ag2.acp import ACPAgent
+from ag2.config import OpenAIResponsesConfig
 
-def text(t):
-    return schema.TextContentBlock(type="text", text=t)
+agent = Agent(name="workie", prompt="You are concise.",
+              config=OpenAIResponsesConfig(model="gpt-4.1-mini", streaming=True))  # streaming=True or the client sees text only at turn end
 
-async def main():
-    config = fake_acp_config(
-        ACPTurn(updates=[
-            schema.AgentThoughtChunk(session_update="agent_thought_chunk", content=text("planning")),
-            schema.AgentMessageChunk(session_update="agent_message_chunk", content=text("done")),
-        ]),
-        permission_policy="auto",  # overrides forward to ACPConfig
-    )
-    agent = Agent("coder", config=config)
-    try:
-        reply = await agent.ask("hello")
-        assert reply.body == "done"
-    finally:
-        await config.aclose()
-
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(ACPAgent(agent).run_stdio())    # stdout is the wire: never print()
 ```
 
-`ACPTurn(hang=True)` blocks until cancelled — use it to exercise `turn_timeout` handling.
+Zed `settings.json`: `{"agent_servers": {"workie": {"type": "custom", "command": "/abs/.venv/bin/python", "args": ["/abs/serve_stdio.py"], "env": {"OPENAI_API_KEY": "sk-..."}}}}` — use the venv interpreter by absolute path.
 
-## Common pitfalls
+`ACPAgent(agent, *, name, version, title, sessions=SessionConfig(max_sessions=1024, ttl=None, storage=None, max_queued=8, max_concurrent_turns=8, max_active_prompts=64, retain_history=False), auth=StaticTokenAuth("secret") | AuthProvider, prompt_content=PromptContent(image=True, audio=False, embedded_context=True), stream_thoughts=False, hitl_hook=..., on_session=...)`.
 
-- **Missing `acp` extra** — `pip install "ag2[acp]"`; without it `from ag2.acp import ...` fails on the missing `acp` SDK.
-- **Exported API keys are not inherited** — the subprocess env is a trimmed base set plus `env=`, so `export ANTHROPIC_API_KEY=...` in your shell does not reach the agent. Pass it via `env={"ANTHROPIC_API_KEY": ...}`. (`CLAUDE_CONFIG_DIR` logins work because `HOME` *is* in the base set.)
-- **Deprecated adapter name** — the old `claude-code-acp` (`@zed-industries/claude-code-acp`) is deprecated; use `claude-agent-acp` (`@agentclientprotocol/claude-agent-acp`), which is what `ClaudeCodeConfig` launches.
-- **`"ask"` in headless runs = deny** — with no human input route, every permission request is rejected. Set `permission_policy="auto"` for unattended orchestration.
-- **`model=` does nothing on the wire** — select the model via `ANTHROPIC_MODEL` / `MODEL_PROVIDER` / `opencode.json` instead.
-- **Adapter not on `PATH`** — `startup_timeout` errors usually mean the launch command wasn't found; install the adapter globally or use the `npx -y` command override.
-- **AG2 `tools=[...]` are not exposed to the CLI agent yet** — CLI-backed agents use their own built-in tools; the MCP tool bridge for AG2-provided tools is an upstream roadmap item.
+- Each `session/new` = isolated history + variables, but **not tenant isolation** (same tools/deps). One tenant per process.
+- `session/cancel` → prompt returns `stop_reason="cancelled"`. `session/load` replays history (durable with `SessionConfig(storage=RedisStorage(...), retain_history=True)`); session id is the credential.
+- `context.input()` / `approval_required()` in a served turn need `ACPAgent(hitl_hook=...)` (the agent's own hook is ignored); otherwise the turn fails with `HumanInputUnsupportedError`.
+- Auth gates sessions until `authenticate(method_id="token", token=...)`; it authenticates a connection, not a principal.
 
-## Going deeper (source of truth)
+## Testing (no subprocess, no keys)
 
-- `ag2/acp/config.py` — `ACPConfig` + the three presets and their defaults.
-- `ag2/acp/client.py` / `bridge.py` / `session.py` — the ACP Client, event bridging, subprocess lifecycle.
-- `ag2/acp/mappers.py` — the exact ACP-update → AG2-event mapping.
-- `ag2/acp/permissions.py` — how `permission_policy` resolves permission requests.
-- `ag2/acp/events.py` — `ACPPlan`, `ACPModeChange`, `ACPAvailableCommands`.
-- `ag2/acp/testing.py` — `fake_acp_config`, `ACPTurn`.
-- ACP protocol: https://agentclientprotocol.com
+- Client side: `fake_acp_config(ACPTurn(updates=[schema.AgentMessageChunk(...)]), permission_policy="auto")` / `fake_remote_acp_config(..., url=...)`; `ACPTurn(hang=True)` exercises `turn_timeout`.
+- Server side: `async with ag2.acp.testing.connect(ACPAgent(agent)) as (client, recorder):` then `client.new_session(cwd=".")`, `client.prompt(session_id=..., prompt=[acp.text_block("hi")])`, `recorder.updates_for(session_id)`. It may log `Task was destroyed but it is pending` / `Send loop failed` at teardown — SDK noise, results are valid.
+
+## Reference
+
+- `references/test_snippets.py` — in-process tests: scripted CLI agent, served agent, auth gate, host `hitl_hook` (no keys).
+- `references/serve_stdio.py` + `references/drive_served_agent.py` — real round trip: AG2 `ACPConfig` drives an AG2 `ACPAgent` subprocess (needs `OPENAI_API_KEY`).
+- Upstream: `website/docs/user-guide/acp/{client,server}.mdx`, `examples/acp/server_stdio.py`; source `ag2/acp/`.

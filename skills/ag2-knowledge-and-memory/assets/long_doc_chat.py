@@ -1,38 +1,32 @@
-"""Long-doc chat — composing assembly policies.
+"""Long-doc chat — assembly policies + compaction (AG2 1.3).
 
-Mirrors website/docs/user-guide/code_examples/07_long_doc_chat.mdx. Three policies
-compose in order:
+Mirrors website/docs/user-guide/code_examples/07_long_doc_chat.mdx.
 
-1. ConversationPolicy — drops every event that isn't conversation/tool traffic.
-2. SlidingWindowPolicy(max_events=6) — hard-caps events forwarded to the LLM.
-3. TokenBudgetPolicy(max_tokens=2000) — char-based secondary cap.
-
-Also pairs the assembly chain with TailWindowCompact so the agent's stream
-history itself is kept small.
+- Middleware(AssemblerMiddleware, policies=[...]) shapes what the LLM sees per
+  call (the stream itself is untouched):
+    1. ConversationPolicy — drop non-conversation/tool events.
+    2. SlidingWindowPolicy(max_events=6) — cap events sent to the LLM.
+    3. TokenBudgetPolicy(max_tokens=2000) — char-based secondary cap.
+- KnowledgePlugin(compact=TailWindowCompact, compact_trigger=CompactTrigger)
+  trims the stream history itself between turns; dropped events are archived
+  to the store under /log/.
 
 Run::
 
-    python long_doc_chat.py
+    python long_doc_chat.py        # needs GEMINI_API_KEY
 """
 
 import asyncio
 
-from ag2 import Agent, KnowledgeConfig
+from ag2 import Agent
+from ag2.assembly import AssemblerMiddleware
 from ag2.compact import CompactTrigger, TailWindowCompact
 from ag2.config import GeminiConfig
-from ag2.events.lifecycle import CompactionCompleted
-from ag2.knowledge import MemoryKnowledgeStore
-from ag2.policies import (
-    ConversationPolicy,
-    SlidingWindowPolicy,
-    TokenBudgetPolicy,
-)
+from ag2.events import CompactionCompleted
+from ag2.knowledge import KnowledgePlugin, MemoryKnowledgeStore
+from ag2.middleware import Middleware
+from ag2.policies import ConversationPolicy, SlidingWindowPolicy, TokenBudgetPolicy
 from ag2.stream import MemoryStream
-
-
-def section(title: str) -> None:
-    print(f"\n── {title} ───")
-
 
 QUESTIONS = [
     "Remember the word 'oak'.",
@@ -45,7 +39,7 @@ QUESTIONS = [
 
 
 async def main() -> None:
-    config = GeminiConfig(model="gemini-3-flash-preview", temperature=0)
+    config = GeminiConfig(model="gemini-2.5-flash", temperature=0)
 
     store = MemoryKnowledgeStore()
     compactions: list[CompactionCompleted] = []
@@ -54,37 +48,38 @@ async def main() -> None:
 
     agent = Agent(
         "lexicon",
-        prompt=(
-            "Be very terse — one short sentence per reply. Answer directly without calling any tools."
-        ),
+        prompt="Be very terse — one short sentence per reply. Answer directly without calling any tools.",
         config=config,
-        assembly=[
-            ConversationPolicy(),
-            SlidingWindowPolicy(max_events=6, transparent=True),
-            TokenBudgetPolicy(max_tokens=2000),
+        middleware=[
+            Middleware(
+                AssemblerMiddleware,
+                policies=[
+                    ConversationPolicy(),
+                    SlidingWindowPolicy(max_events=6, transparent=True),
+                    TokenBudgetPolicy(max_tokens=2000),
+                ],
+            ),
         ],
-        knowledge=KnowledgeConfig(
-            store=store,
-            compact=TailWindowCompact(target=4),
-            compact_trigger=CompactTrigger(max_events=8),
-        ),
+        plugins=[
+            KnowledgePlugin(
+                store,
+                expose_tool=False,
+                compact=TailWindowCompact(target=4),
+                compact_trigger=CompactTrigger(max_events=8),
+            )
+        ],
     )
 
-    section("Long-doc chat — assembly policies trim what the LLM actually sees")
-
     reply = await agent.ask(QUESTIONS[0], stream=stream)
-    print(f"Q1> {QUESTIONS[0]}")
-    print(f"A1> {reply.body}")
-
+    print(f"Q1> {QUESTIONS[0]}\nA1> {reply.body}")
     for i, q in enumerate(QUESTIONS[1:], start=2):
         reply = await reply.ask(q)
-        print(f"Q{i}> {q}")
-        print(f"A{i}> {reply.body}")
+        print(f"Q{i}> {q}\nA{i}> {reply.body}")
 
-    print()
-    print(f"Compactions fired during run: {len(compactions)}")
+    print(f"\nCompactions fired during run: {len(compactions)}")
     for c in compactions:
-        print(f"  - {c.strategy}: {c.events_before} → {c.events_after} events")
+        print(f"  - {c.strategy}: {c.events_before} -> {c.events_after} events")
+    print("Store /log/:", await store.list("/log/"))
 
 
 if __name__ == "__main__":

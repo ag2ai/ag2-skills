@@ -8,7 +8,7 @@ Four annotations let a tool pull values from execution context without exposing 
 |---|---|---|---|
 | `Context` (positional or kw) | Whole-context access (variables, dependencies, stream, prompt, `input()`) | The current `Context` object | Per call |
 | `Inject(real_name="", default=..., default_factory=...)` | Pre-built complex objects (DB pool, HTTP session) | `context.dependencies` dict | Per call |
-| `Variable(real_name="", default=..., default_factory=...)` | Lightweight scalar state (API key, session id, flag) | `context.variables` dict | Per call (mutations persist within conversation) |
+| `Variable(real_name="", default=..., default_factory=...)` | Serializable state (session id, flags, progress, lists) | `context.variables` mapping | Per invocation (mutations persist within the conversation; caller's dict is copied) |
 | `Depends(callable, use_cache=True)` | Computed-on-demand dependency, side-execution, yield-based teardown | Calls `callable` at execution time | Per call (cached within the same call by default) |
 
 Resolution annotations do **not** appear in the LLM-facing tool schema.
@@ -21,8 +21,8 @@ from ag2 import Context, tool
 @tool
 def query(query: str, context: Context) -> str:
     db = context.dependencies["db"]
-    api_key = context.variables.get("api_key")
-    return f"{api_key}: {db.execute(query)}"
+    session = context.variables.get("session_id")
+    return f"{session}: {db.execute(query)}"
 ```
 
 `Context` exposes `.dependencies`, `.variables`, `.prompt`, `.stream`, and `.input(...)` for HITL.
@@ -56,7 +56,7 @@ client: Annotated[object | None, Inject(default=None)]
 client: Annotated[object, Inject(default_factory=DefaultClient)]
 ```
 
-## `Variable` — scalar state
+## `Variable` — serializable conversation state
 
 ```python
 from typing import Annotated
@@ -65,13 +65,15 @@ from ag2 import Variable, tool
 @tool
 def fetch_user(
     user_id: str,
-    api_key: Annotated[str, Variable()],
+    session_id: Annotated[str, Variable()],
     theme: Annotated[str, Variable(default="dark")],
 ) -> str:
     ...
 ```
 
-Provide variables on the agent or per-ask, same merge/override rules as deps. **Variables are mutable inside tools** and persist across tool calls in the same conversation:
+Keep secrets and runtime objects in `dependencies`, not variables: variables are deep-copied and synced to peers over A2A / AG-UI / NLIP (keys prefixed `ag:` / `a2a:` are reserved and stripped).
+
+Provide variables on the agent or per-ask (per-ask wins on key collision). **Variables are mutable inside tools** and persist across tool calls in the same conversation:
 
 ```python
 @tool
@@ -85,6 +87,46 @@ def fetch_secure(auth_token: Annotated[str | None, Variable(default=None)]) -> s
         return "Not authenticated"
     return f"Data with token {auth_token}"
 ```
+
+### Copy semantics — read results from the reply
+
+A fresh `agent.ask(...)` / `agent.run(...)` **deep-copies** the merged `Agent(variables=...)` defaults and the per-call `variables=` mapping. Tool mutations therefore never reach the caller's dict or the agent defaults, and two independent `ask()` calls never share mutable state. `reply.ask(...)` continues with the same (already mutated) variables.
+
+```python
+inputs = {"cart": []}
+reply = await agent.ask("Add milk to my cart", variables=inputs)
+reply.context.variables["cart"]   # ["milk"]   <- the invocation's state
+inputs["cart"]                    # []         <- untouched
+reply = await reply.ask("Add eggs too")   # continues with ["milk"]
+```
+
+Persist state between independent requests yourself (e.g. save `dict(reply.context.variables)` and pass it back as `variables=` next time).
+
+### Scopes across subagents (`Scope`, `ScopedValue`, `ScopeError`)
+
+When a tool delegates to a worker (`worker.as_tool()`, see `ag2-subagent-delegation`), each variable crosses according to its scope. Import `Scope`, `ScopedValue`, `ScopeError` from `ag2`.
+
+| Scope | Child receives | Visibility of changes |
+|---|---|---|
+| `Scope.COPIED` (default for plain values) | deep copy | that branch only |
+| `Scope.LOCAL` | nothing | owning branch only |
+| `Scope.SHARED` | the same binding | whole delegation tree of this invocation |
+
+```python
+from ag2 import Scope, ScopedValue
+
+reply = await coordinator.ask(
+    "Research X",
+    variables={
+        "findings": ScopedValue([], scope=Scope.SHARED),       # workers append here
+        "draft": [],                                           # each worker gets a copy
+        "root_note": ScopedValue("private", scope=Scope.LOCAL),  # invisible to workers
+    },
+)
+reply.context.variables["findings"]   # includes workers' contributions
+```
+
+Rules: shared names must be declared at the **root** (agent defaults or the root `variables=`). A worker assigning `ScopedValue(..., scope=Scope.SHARED)` for a new name, or redeclaring a scope, raises `ScopeError` (surfaced to the worker's model as a tool error). For open-ended contributions declare a shared dict at the root and add keys inside it. Sharing gives visibility, not locking — pass an `asyncio.Lock` via `dependencies` if workers race. Tools and `Variable()` receive the plain value, never the `ScopedValue` wrapper.
 
 ## `Depends` — computed dependencies
 

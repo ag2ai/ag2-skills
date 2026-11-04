@@ -3,11 +3,11 @@
   "framework": "ag2",
   "scope": "ag2",
   "scope_note": "These skills document the AG2 API (the `ag2` namespace) ONLY. They do not cover AG2 Classic (the `autogen` namespace).",
-  "ag2_version": "1.0.0",
-  "ag2_commit": "22f5d2e156dde56f61145bd4c9b10fca9d3e25cc",
+  "ag2_version": "1.3.0",
+  "ag2_commit": "1229064a23a1e39a4c3c089bb4643a637117c8a9",
   "ag2_repo": "https://github.com/ag2ai/ag2",
   "verified_against_branch": "main",
-  "verified_date": "2026-07-27",
-  "python_version": "3.13.13",
-  "verification_method": "Every SKILL.md was cross-checked against the ag2 source and example code was executed against the 1.0.0b0 release candidate (ag2-acp) and ag2==0.14.0 (all earlier skills). Re-pinned to the 1.0.0 stable release (tag v1.0.0, published 2026-07-27); the 1.0.0b0 -> 1.0.0 changes are additive (new modules and features) and do not remove or break any API these skills document, per a file-level review of the upstream diff."
+  "verified_date": "2026-11-04",
+  "python_version": "3.13",
+  "verification_method": "All 26 SKILL.md files (plus references/ and assets/) were updated against the v1.3.0 tag source and website/docs, and their example code was executed against ag2==1.3.0 with live OpenAI/Anthropic/Gemini models under `python -W always::DeprecationWarning` (no ag2 deprecation warnings). APIs deprecated in 1.3.0 and removed in 1.4.0 (OpenAIConfig as Chat Completions, Agent(knowledge=), Agent(assembly=), TaskConfig/tasks=, Agent.task(), AnthropicConfig sampling params) are only mentioned as migration notes. Not executed live: audio devices, gRPC, Daytona/Tenki sandboxes, real Claude Code/Codex ACP sessions, Bedrock/Mistral/xAI/Z.AI calls (signature-checked against source). Skill usefulness was measured with a 15-task Claude Haiku eval before and after the update."
 }

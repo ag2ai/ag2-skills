@@ -1,6 +1,6 @@
 ---
 name: ag2-use-builtin-tools
-description: Wire AG2's shipped tools into an `Agent` — both provider-native server-side tools (web search, web fetch, code execution, MCP, image generation, memory) and locally-executed common toolkits (filesystem, DuckDuckGo, Exa, Tavily, skills). Use when the user wants capabilities AG2 already ships rather than writing custom Python. For shell commands see `ag2-shell-tool`; for custom Python tools see `ag2-add-custom-tool`.
+description: Wire AG2's shipped tools into an `Agent` instead of writing custom Python. Provider-native server-side tools in `ag2.tools` (`WebSearchTool`, `WebFetchTool` + `UrlSources`, `CodeExecutionTool`, `FileSearchTool`, `ImageGenerationTool`, `MemoryTool`, `SkillsTool`, `GoogleMapsTool`, `XSearchTool`, `MCPServerTool`); consuming MCP servers client-side (`MCPToolkit`, `MCPServerConfig`, `MCPStdioServerConfig`, `MCPAnswerPolicy`); and local toolkits for every provider (`FilesystemToolkit`, `DuckDuckSearchTool`, `TavilySearchTool`, `PerplexitySearchToolkit`, `SkillPlugin`/`SkillsToolkit`, and `ag2.extensions.tools.search` — `ExaToolkit`, `FirecrawlToolkit`, `KeenableSearchToolkit`, `SerplySearchToolkit`, `TinyFishSearchToolkit`). Use for web search/fetch, connecting an agent to an MCP server, file access, or skills. Shell (`SandboxShellTool`, `ShellTool`, `AnthropicBashTool`) → `ag2-shell-tool`; custom tools → `ag2-add-custom-tool`; serving an agent over MCP → `ag2-mcp`.
 license: Apache-2.0
 ---
 
@@ -8,138 +8,85 @@ license: Apache-2.0
 
 ## When to use
 
-Reach for this skill when the user wants to add a capability that AG2 already ships. Two families:
+The user wants a capability AG2 already ships. Three families, all passed via `Agent(tools=[...])` and freely mixed with custom tools:
 
-1. **Provider-native tools** (`ag2.tools` — `WebSearchTool`, `CodeExecutionTool`, etc.) — executed server-side by Anthropic / OpenAI / Gemini. No Python implementation on your side.
-2. **Common toolkits** (`ag2.tools` — `FilesystemToolkit`, `DuckDuckSearchTool`, `TavilySearchTool`, `SkillsToolkit`; plus `ExaToolkit` from `ag2.extensions.tools.search`) — regular Python that runs in your process and works with **every** provider.
+1. **Provider-native** — run server-side by Anthropic / OpenAI / Gemini / xAI / Z.AI. Support varies — check the matrix.
+2. **MCP client** — `MCPToolkit` (AG2 connects; any provider; stdio or HTTP) or `MCPServerTool` (the provider connects).
+3. **Local toolkits** — Python tools run in your process; work with **every** provider.
 
-For shell commands, use `ag2-shell-tool` (it's important enough to live in its own skill).
-For custom Python tools, use `ag2-add-custom-tool`.
-
-## 60-second recipes
-
-### Web search (provider-native)
+## Recipes
 
 ```python
 from ag2 import Agent
-from ag2.config import AnthropicConfig
-from ag2.tools import WebSearchTool, UserLocation
+from ag2.config import AnthropicConfig, OpenAIResponsesConfig
+from ag2.tools import CodeExecutionTool, UserLocation, WebFetchTool, WebSearchTool
 
 agent = Agent(
     "researcher",
-    config=AnthropicConfig(model="claude-sonnet-4-6"),
+    config=AnthropicConfig(model="claude-haiku-4-5", streaming=True),  # streaming: see pitfalls
     tools=[
-        WebSearchTool(
-            max_uses=5,
-            user_location=UserLocation(country="US"),
-            allowed_domains=["github.com", "pypi.org"],
-            blocked_domains=["pinterest.com"],
-        ),
+        WebSearchTool(max_uses=3, user_location=UserLocation(country="US"), allowed_domains=["pypi.org"]),
+        WebFetchTool(max_uses=2, citations=True),   # Anthropic / Gemini only
+        CodeExecutionTool(),                         # Anthropic / OpenAI / Gemini / xAI
     ],
 )
+reply = await agent.ask("Find the ag2 PyPI page and report the latest version.")
 ```
 
-### Web fetch (Anthropic / Gemini only)
+`ImageGenerationTool(quality="low", size="1024x1024")` (OpenAI Responses only) returns images on `reply.files` (`BinaryResult.data`).
+
+### Connect an MCP server (client side) — needs `pip install "ag2[mcp]"`
 
 ```python
-from ag2.tools import WebFetchTool
-
-tools = [WebFetchTool(max_uses=3, max_content_tokens=50000, citations=True)]
-```
-
-### Code execution
-
-```python
-from ag2.tools import CodeExecutionTool
-
-agent = Agent("analyst", config=config, tools=[CodeExecutionTool()])
-```
-
-### MCP server integration
-
-```python
-from ag2.tools import MCPServerTool
+from ag2.tools import MCPServerConfig, MCPStdioServerConfig, MCPToolkit
 
 tools = [
-    MCPServerTool(
-        server_url="https://mcp.example.com/sse",
-        server_label="my-tools",
-        allowed_tools=["search", "summarize"],
-    ),
+    MCPToolkit("https://mcp.example.com/mcp"),                       # remote, no auth
+    MCPToolkit(MCPServerConfig(server_url="https://mcp.example.com/mcp",
+                               authorization_token=token, tool_name_prefix="docs_")),
+    MCPToolkit(MCPStdioServerConfig(command="uvx", args=["mcp-server-github"],
+                                    env={"GITHUB_TOKEN": gh}, allowed_tools=["list_issues"])),
 ]
 ```
 
-### Image generation (OpenAI Responses only)
+AG2 discovers the server's tools lazily and executes them itself — works with every provider, credentials never leave your infra. `MCPServerTool(server_url=..., server_label=..., allowed_tools=[...])` instead forwards URL + token to the provider (Anthropic / OpenAI Responses / xAI; URL servers only). Elicitation, `protocol_mode="auto"`, prefixes and the full config tables: `references/mcp_client.md`.
+
+### Local toolkits (any provider)
 
 ```python
-from ag2.config import OpenAIResponsesConfig
-from ag2.tools import ImageGenerationTool
+import os, tempfile
+from ag2.tools import DuckDuckSearchTool, FilesystemToolkit, SkillPlugin
+from ag2.extensions.tools.search import KeenableSearchToolkit, SerplySearchToolkit
 
+workspace = tempfile.mkdtemp()
 agent = Agent(
-    "designer",
-    config=OpenAIResponsesConfig(model="gpt-4.1"),
-    tools=[ImageGenerationTool(quality="high", size="1024x1024", output_format="png")],
+    "worker",
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
+    tools=[
+        FilesystemToolkit(base_path=workspace),         # read/write/update/delete/find, sandboxed to base_path
+        DuckDuckSearchTool(max_results=5),              # pip install "ag2[ddgs]", no key
+        KeenableSearchToolkit(max_results=5),           # no extra package, works without a key
+        SerplySearchToolkit(api_key=os.environ["SERPLY_API_KEY"]).web(num=5),  # factory = one tool only
+    ],
+    plugins=[SkillPlugin("./my-skills")],               # local agentskills.io skills
 )
-reply = await agent.ask("Generate a logo for a coffee shop.")
-images = reply.files  # list[BinaryResult]
 ```
 
-### Filesystem (sandboxed, any provider)
-
-```python
-from ag2.tools import FilesystemToolkit
-
-fs = FilesystemToolkit(base_path="/tmp/workspace")
-agent = Agent("worker", config=config, tools=[fs])
-```
-
-`base_path` is enforced — `../../etc/passwd` raises `PermissionError`. Use `read_only=True` to expose only `read_file` and `find_files`. For ephemeral workspaces use `tempfile.TemporaryDirectory()` rather than hardcoding `/tmp`.
-
-### Web search via DuckDuckGo (no API key)
-
-```python
-from ag2.tools import DuckDuckSearchTool
-# requires: pip install ag2[ddgs]
-
-tools = [DuckDuckSearchTool(max_results=10, region="us-en", safesearch="moderate")]
-```
-
-### Exa neural search
-
-```python
-import os
-from ag2.extensions.tools.search import ExaToolkit
-# requires: pip install "exa-py>=2.12.1,<3"  (no ag2[exa] extra — install the package directly)
-
-tools = [ExaToolkit(api_key=os.environ["EXA_API_KEY"])]
-```
-
-Each tool is exposed as a factory method (`exa.search()`, `exa.find_similar()`, `exa.get_contents()`, `exa.answer()`) so you can pass only what you need with per-call config.
-
-### Tavily search
-
-```python
-import os
-from ag2.tools import TavilySearchTool
-# requires: pip install ag2[tavily]
-
-tools = [TavilySearchTool(
-    api_key=os.environ["TAVILY_API_KEY"],
-    search_depth="advanced",
-    include_answer=True,
-)]
-```
+Every multi-tool toolkit exposes per-tool factories (`fs.read_file()`, `exa.search()`, `serply.news()`, …) so you can hand the agent a subset with per-call options.
 
 ## Going deeper
 
-- **Per-tool provider support, every parameter, version pinning** — `references/builtin_tools_matrix.md`.
-- **Source docs** — `website/docs/user-guide/tools/builtin_tools.mdx` (provider-native), `website/docs/user-guide/tools/common_toolkits.mdx` (common toolkits — also covers `SkillsToolkit` and `SkillSearchToolkit`).
-- **Toolkits authoring** — `website/docs/user-guide/tools/toolkits.mdx`.
+- `references/builtin_tools_matrix.md` — provider × tool matrix, every parameter, Anthropic tool versions, `WebFetchTool(url_sources=...)`, `FileSearchTool`, `SkillsTool`, all search toolkits and their install lines, `SkillPlugin` vs `SkillsToolkit`.
+- `references/mcp_client.md` — `MCPToolkit` / `MCPServerTool` in depth.
+- Upstream: `website/docs/user-guide/tools/{builtin_tools,common_toolkits,mcp_servers,toolkits}.mdx`, `website/docs/user-guide/skills.mdx`, `website/docs/user-guide/extensions/tools/search/*.mdx`.
 
 ## Common pitfalls
 
-- **Mismatch between tool and provider** — `WebFetchTool` raises with OpenAI; `MemoryTool` is Anthropic-only; `ImageGenerationTool` is OpenAI Responses only. Check `references/builtin_tools_matrix.md` first.
-- **Anthropic tool versions default to older revisions** — pin `version="web_search_20260209"` etc. when you need dynamic filtering on Opus 4.6 / Sonnet 4.6.
-- **`FilesystemToolkit` paths are sandboxed** — by design. Don't try to bypass the path-traversal guard; choose a wider `base_path` instead.
-- **Toolkits and individual tools mix freely** — `tools=[fs, exa, my_custom_tool]` is fine.
-- **Optional dependency missing** — `DuckDuckSearchTool` (`ag2[ddgs]`) and `TavilySearchTool` (`ag2[tavily]`) need their `ag2[<extra>]` install; `ExaToolkit` is a extension with **no `ag2` extra** — install its package directly (`pip install "exa-py>=2.12.1,<3"`). Without the dependency you get a clear `ImportError` from the config-fallback layer, not a confusing crash. Install before delivering the code. If you cannot run commands, state the exact `pip install` command.
+- **Tool/provider mismatch raises `UnsupportedToolError`** (from `ag2.exceptions`) on the first `ask` — e.g. `WebFetchTool` on OpenAI, `MemoryTool` off Anthropic, `ImageGenerationTool` off OpenAI Responses. Use `OpenAIResponsesConfig`, not `OpenAICompletionsConfig`, for OpenAI built-in tools.
+- **Anthropic + server tools truncates `reply.body`** (1.3.0): a cited answer arrives as many text blocks and non-streaming `reply.body` / `content()` keeps only the last one (often just `"."`). Use `AnthropicConfig(..., streaming=True)` — the streamed reply is complete.
+- **`MCPServerTool(blocked_tools=...)` on OpenAI / xAI raises `BlockedToolsUnsupportedError`** — they only take an allow-list. Use `allowed_tools`, or `MCPToolkit`, which enforces `blocked_tools` everywhere.
+- **Version-gated `WebFetchTool` options** (`use_cache` ≥ `web_fetch_20260309`, `response_inclusion` = `web_fetch_20260318`) raise `WebFetchOptionUnsupportedError` before the request — pass a matching `version=`.
+- **`FilesystemToolkit` is sandboxed** — paths or glob patterns escaping `base_path` raise `PermissionError`; `read_only=True` exposes only `read_file`/`find_files`.
+- **MCP tool-name collisions** — a server tool never overrides a local tool of the same name; it is dropped with a warning. Set `tool_name_prefix`.
+- **Missing dependency** — an extension whose SDK is absent imports as a placeholder that raises `ImportError` with the exact `pip install` on first use. Install before delivering code: `ag2[mcp]`, `ag2[ddgs]`, `ag2[tavily]`, `ag2[perplexity]`, `"exa-py>=2.12.1,<3"`, `"firecrawl-py>=4.46,<5"`, `"tinyfish>=0.2.3"`. Keenable / Serply / Glasser / Xquik need no extra package.
+- **`SkillsTool` ≠ `SkillPlugin`** — `SkillsTool("xlsx")` enables the provider's hosted skills; `SkillPlugin` / `SkillsToolkit` run your own local skill directories.

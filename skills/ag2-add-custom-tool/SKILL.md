@@ -1,6 +1,6 @@
 ---
 name: ag2-add-custom-tool
-description: Add a custom Python tool to an AG2 `Agent` using the `@tool` decorator. Use when the user wants to give an Agent a new capability backed by Python code (API calls, DB queries, computations, file ops). Covers sync and async tools, parameter typing, Pydantic schema customisation, returning typed `Input` / `ToolResult` (text / data / images / binary), `final=True` early-exit, and dependency injection via `Context` / `Inject` / `Variable` / `Depends`.
+description: Add a custom Python tool to an AG2 `Agent` using the `@tool` decorator. Use when the user wants to give an Agent a new capability backed by Python code (API calls, DB queries, computations, file ops) or needs tools to share state. Covers sync and async tools, `@tool(timeout=...)`, parameter typing, Pydantic `Field` schema customisation, returning typed `Input` / `ToolResult` (text / data / images / binary), `final=True` early-exit, dependency injection via `Context` / `Inject` / `Variable` / `Depends`, and conversation variables (`ask(variables=...)`, reading results back from `reply.context.variables`, `ScopedValue` / `Scope` / `ScopeError` for subagents). For built-in tools see `ag2-use-builtin-tools`; delegation `ag2-subagent-delegation`; approval gates `ag2-hitl`; testing `ag2-testing`.
 license: Apache-2.0
 ---
 
@@ -8,13 +8,13 @@ license: Apache-2.0
 
 ## When to use
 
-The user wants their `Agent` to take a real-world action: hit an API, query a database, compute something, return an image. If they want shipped tools (web search, code exec, shell), see `ag2-use-builtin-tools` and `ag2-shell-tool` instead.
+The user wants their `Agent` to take a real-world action: hit an API, query a database, compute something, return an image — or tools must share state across calls. For shipped tools (web search, code exec, shell) see `ag2-use-builtin-tools` / `ag2-shell-tool`.
 
 ## 60-second recipe
 
 ```python
 from ag2 import Agent, tool
-from ag2.config import OpenAIConfig
+from ag2.config import OpenAIResponsesConfig
 
 @tool
 def calculate_shipping_cost(destination: str, weight_kg: float) -> str:
@@ -24,171 +24,108 @@ def calculate_shipping_cost(destination: str, weight_kg: float) -> str:
 agent = Agent(
     "shipping",
     prompt="Use tools when helpful.",
-    config=OpenAIConfig(model="gpt-4o-mini"),
+    config=OpenAIResponsesConfig(model="gpt-4.1-mini"),
     tools=[calculate_shipping_cost],
 )
+reply = await agent.ask("Cost to ship 2kg to Berlin?")
+print(reply.body)
 ```
 
-The `@tool` decorator generates the LLM-facing schema from the function signature, type hints, and docstring. **The docstring is the description the LLM sees** — write it for an LLM reader, not just a human.
+`@tool` builds the LLM-facing schema from the signature, type hints and docstring. **The docstring is the description the LLM sees.** Plain undecorated functions in `tools=[...]` are wrapped automatically; `@agent.tool` attaches to an existing agent. Tool names must be unique per turn — a later tool with the same name replaces the earlier one (with a warning).
 
-You can also pass plain undecorated functions in `tools=[...]` and AG2 wraps them automatically:
+## Sync, async, timeouts
+
+Sync `def` tools run in a worker thread by default (`@tool(sync_to_thread=False)` only for cheap pure-Python work). `async def` tools run on the event loop.
 
 ```python
-def get_weather(location: str) -> str:
-    """Returns the current weather for a given location."""
-    return "Sunny, 22°C"
-
-agent = Agent("weather", tools=[get_weather])
+@tool(timeout=30.0)   # seconds; default None = wait forever
+async def fetch_page(url: str) -> str:
+    """Fetches the text of a web page."""
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        return (await client.get(url)).text
 ```
 
-Or attach a tool to an existing agent with `@agent.tool`:
+On expiry the model gets a `TimeoutError` tool result (`ToolErrorEvent`) and can continue. A timed-out *sync* tool's thread keeps running — also set timeouts on the underlying client.
 
-```python
-agent = Agent("calc")
-
-@agent.tool
-def multiply(a: int, b: int) -> int:
-    """Multiplies two integers and returns the result."""
-    return a * b
-```
-
-## Sync vs async
-
-Both `def` and `async def` are supported. **Synchronous tools run in a thread by default** so blocking I/O does not freeze the event loop. For ultra-fast pure-Python tools, opt out:
-
-```python
-@tool(sync_to_thread=False)
-def format_name(first: str, last: str) -> str:
-    """Formats a full name."""
-    return f"{last.upper()}, {first.capitalize()}"
-```
-
-Native async tools run in the main event loop directly:
-
-```python
-import aiohttp
-
-@tool
-async def fetch(url: str) -> str:
-    """Fetches a URL with aiohttp."""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as r:
-            return await r.text()
-```
-
-## Validating inputs with Pydantic `Field`
-
-Use `Annotated[T, Field(...)]` to give the LLM strict bounds. The framework forwards these into the JSON Schema:
+## Schema control with Pydantic `Field`
 
 ```python
 from typing import Annotated
 from pydantic import Field
-from ag2 import tool
 
-@tool
+@tool(name="set_thermostat", description="Sets the thermostat.")
 def set_temperature(
-    temp: Annotated[int, Field(description="Target temperature.", ge=10, le=30)],
-    mode: Annotated[str, Field(description="Mode.", pattern="^(heat|cool|auto)$")],
+    temp: Annotated[int, Field(description="Target °C.", ge=10, le=30)],
+    mode: Annotated[str, Field(pattern="^(heat|cool|auto)$")],
 ) -> str:
-    """Sets the thermostat."""
     return f"Set to {temp}°C in {mode} mode."
-```
-
-You can also override the tool name and description on the decorator:
-
-```python
-@tool(name="custom_math_tool", description="Performs advanced math.")
-def math_op(a: int, b: int) -> int:
-    return a + b
 ```
 
 ## Returning typed `Input` / `ToolResult`
 
-A plain `str` return is wrapped in `TextInput` automatically. For richer payloads, return an `Input` subtype or compose with `ToolResult`:
+A `str` return becomes `TextInput`. For richer payloads return an `Input` subtype or compose with `ToolResult`:
 
 ```python
-from ag2 import DataInput, ImageInput, TextInput, ToolResult, tool
-
-@tool
-def get_status(task_id: str) -> TextInput:
-    return TextInput(f"Task {task_id} is in progress.")
+from ag2 import DataInput, ImageInput, ToolResult, tool
 
 @tool
 def get_user_profile(user_id: str) -> DataInput:
-    return DataInput({"id": user_id, "name": "Alice", "role": "admin"})
-
-@tool
-def fetch_chart(chart_id: str) -> ImageInput:
-    return ImageInput(f"https://charts.example.com/{chart_id}.png")
+    """Look up a user."""
+    return DataInput({"id": user_id, "name": "Alice"})
 
 @tool
 def analyze_product(product_id: str) -> ToolResult:
     """Returns image + structured metadata in one tool call."""
-    return ToolResult(
-        ImageInput(f"https://cdn.example.com/products/{product_id}.jpg"),
-        {"id": product_id, "name": "Widget Pro", "stock": 42},
-    )
+    return ToolResult(ImageInput(url=f"https://cdn.example.com/{product_id}.jpg"), {"id": product_id, "stock": 42})
 ```
 
-For raw bytes of arbitrary format, use `BinaryInput(data=..., media_type="application/pdf")`.
+Raw bytes: `BinaryInput(data, media_type="application/pdf")`.
 
-## End the turn early with `final=True`
+**End the turn early:** `return ToolResult("Ticket 42 was escalated.", final=True)` — the text becomes `reply.body` with no extra LLM round-trip. A final result must hold exactly one part (`TextInput` or `DataInput`).
 
-When the tool already knows the exact final answer, skip the extra LLM round-trip:
+## Dependency injection & shared state
+
+Hidden from the LLM schema; full guide in `references/dependency_injection.md`.
+
+| Annotation | Resolves from | Use for |
+|---|---|---|
+| `ctx: Context` | the current context | `.variables`, `.dependencies`, `.input()` |
+| `Annotated[T, Inject("name")]` | `dependencies={...}` | clients, DB pools, locks, secrets (never serialized) |
+| `Annotated[T, Variable("name", default=...)]` | `variables={...}` | serializable state shared between tools |
+| `Annotated[T, Depends(fn)]` | calls `fn` per tool call (may `yield` for teardown) | sessions, auth checks |
 
 ```python
-from ag2 import ToolResult, tool
+from ag2 import Context, Variable
 
 @tool
-def handoff_to_human(ticket_id: str) -> ToolResult:
-    """Escalates and returns the final user-facing message verbatim."""
-    return ToolResult(f"Ticket {ticket_id} was escalated.", final=True)
+def authenticate(context: Context) -> str:
+    """Log in. Call before fetch_secure."""
+    context.variables["auth_token"] = "abc-123"
+    return "Authenticated"
+
+@tool
+def fetch_secure(auth_token: Annotated[str | None, Variable(default=None)]) -> str:
+    """Fetch secure data."""
+    return f"Data with token {auth_token}" if auth_token else "Not authenticated"
+
+inputs = {"user": "u1"}
+reply = await agent.ask("Get my data.", variables=inputs)
+reply.context.variables["auth_token"]   # "abc-123"  <- read results HERE
+inputs                                  # {"user": "u1"} — unchanged
 ```
 
-A `final=True` `ToolResult` must contain exactly one part (`TextInput` or `DataInput`).
-
-## Dependency injection (Context / Inject / Variable / Depends)
-
-Tools can pull execution-time values without exposing them to the LLM. See `references/dependency_injection.md` for the full table; the basics:
-
-```python
-from typing import Annotated
-from ag2 import Context, Inject, Variable, tool
-
-@tool
-def query_db(query: str, ctx: Context) -> str:
-    """Runs a SQL query."""
-    db = ctx.dependencies["db"]
-    return db.execute(query)
-
-@tool
-def fetch(url: str, http: Annotated[object, Inject("http_session")]) -> str:
-    """Fetches with a shared HTTP session."""
-    return http.get(url).text
-
-@tool
-def send(text: str, api_key: Annotated[str, Variable()]) -> str:
-    """Sends a message via the configured channel."""
-    ...
-```
-
-`Inject` annotations are stripped from the LLM-facing schema — they're an internal injection mechanism.
+**`ask(variables=...)` deep-copies the mapping** (merged over `Agent(variables=...)` defaults) — tool mutations never reach your original dict or the agent defaults. Read state back from `reply.context.variables`; `reply.ask(...)` continues with the same variables. For subagents (`Agent.as_tool()`), variables are copied into each child unless declared `ScopedValue(value, scope=Scope.SHARED)` at the root — see the reference.
 
 ## Going deeper
 
-- `references/dependency_injection.md` — `Context` vs `Inject` vs `Variable` vs `Depends`, defaults, factories, mutability, overrides.
-- `website/docs/user-guide/tools/tools.mdx` — full `@tool` reference, including the synthesized JSON Schema.
-- `website/docs/user-guide/depends.mdx` — `Depends` lifecycle, yield-based teardown, caching, test overrides.
-- `website/docs/user-guide/multimodal/inputs.mdx` — the `Input` factory hierarchy and provider support matrix.
-- `website/docs/user-guide/tools/toolkits.mdx` — bundle related tools into a reusable `Toolkit`.
-- `website/docs/user-guide/tools/tool_middleware.mdx` — async hooks around a single tool (validation, redaction, approval — see also `ag2-hitl`).
+- `references/dependency_injection.md` — `Inject` / `Variable` / `Depends` details, `Scope` semantics, test overrides.
+- Upstream: `website/docs/user-guide/tools/tools.mdx`, `context/variables.mdx`, `context/inject.mdx`, `depends.mdx`, `tools/toolkits.mdx`, `tools/tool_middleware.mdx`.
 
 ## Common pitfalls
 
-- **Vague docstring** — the LLM uses it to decide *when* to call the tool. "Calculates shipping cost based on destination and weight" is much better than "Shipping calc".
-- **No type hints** — without them the framework can't generate a useful JSON Schema; the LLM may not call your tool at all.
-- **Blocking the event loop** — if you write `def` (sync) tool with heavy CPU or network and pass `sync_to_thread=False`, the loop blocks. Default behaviour (run in a thread) is safe; only opt out for cheap pure-Python work.
-- **Function-level imports inside tools** — repo convention disallows them. Hoist `import` to module top.
-- **Nested function definitions inside the tool body** — also disallowed (recreates the function on every call).
-- **Returning `dict` directly when you wanted structured data** — wrap it in `DataInput(...)` so the framework treats it as structured rather than coercing to text.
-- **Forgetting `final=True` requires exactly one part** — combining multiple `Input`s with `final=True` will raise.
+- **Vague docstring / missing type hints** — the LLM won't know when or how to call the tool.
+- **Expecting your `variables` dict to be mutated** — it's copied; use `reply.context.variables`.
+- **Putting clients/locks in `variables`** — they're deep-copied (and synced over A2A/AG-UI). Use `dependencies` + `Inject`.
+- **Blocking the loop** with `sync_to_thread=False` on slow code — keep the default.
+- **Swallowing `asyncio.CancelledError`** in async tools — breaks `timeout=`.
+- **`final=True` with multiple parts** — raises.
